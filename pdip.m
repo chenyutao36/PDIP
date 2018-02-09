@@ -38,10 +38,10 @@ function [w,lambda,mu,s,info] = pdip(H,g,B,b,C,c)
             
 %             [Y_test,LY_test] = Coeff_Normal(mem.A_sens,mem.B_sens,phi,4,1,40);
 
-            [sol_aff_test] = Lin_Solve(mem.A_sens,mem.B_sens,phi,4,1,40,beta);
-%             vpa(Y_test,4);
-            
-%             err=norm(Y-Y_test)
+%             [sol_aff] = Lin_Solve(mem.A_sens,mem.B_sens,phi,4,1,40,beta);
+
+            [sol_aff] = Lin_Solve(mem.Q_h,mem.S, mem.R, mem.A_sens, mem.B_sens,...
+                                               4,1,4,2,40,beta,s,mu,C);
                                     
             KKT_LHS=Y;           
             
@@ -52,11 +52,11 @@ function [w,lambda,mu,s,info] = pdip(H,g,B,b,C,c)
             KKT_RHS = C'*iS*(rS-L*rI)-rC;
         end
         
-        sol_aff = linsolve(KKT_LHS, KKT_RHS, opts);    
+%         sol_aff = linsolve(KKT_LHS, KKT_RHS, opts);    
         
 %         sol_aff = BackSolve(LY,KKT_RHS,4,40);   
 
-        norm(sol_aff - sol_aff_test)
+%         norm(sol_aff - sol_aff_test)
         
         if nE>0
             dlambda_aff = sol_aff(1:nE);
@@ -107,27 +107,14 @@ function [w,lambda,mu,s,info] = pdip(H,g,B,b,C,c)
         while sum(mu+alpha_dual_tau*dmu>=(1-tau)*mu)<nI
             alpha_dual_tau = alpha_dual_tau*0.95;
         end
-        
-%         H_a = [(dw'*H'*H*dw+dw'*C'*C*dw+2*dw'*C'*ds+ds'*ds), (2*dmu'*C*H*dw+ds'*dmu);...
-%                (2*dw'*H'*C'*dmu+dmu'*ds), dmu'*C*C'*dmu];
-%         g_a = [ds'*mu; s'*dmu];
-%         
-%         sol_a = quadprog(H_a,g_a, [],[],[],[],[0;0],[alpha_pri_tau;alpha_dual_tau]);
-%         
-%         alpha_pri = sol_a(1);
-%         alpha_dual = sol_a(2);
-        
+                
         alpha = min(alpha_pri_tau, alpha_dual_tau);      
         w = w+alpha*dw;
         mu = mu+alpha*dmu;
         s = s+alpha*ds;
 
-%         w = w+alpha_pri*dw;
-%         mu = mu+alpha_dual*dmu;
-%         s = s+alpha_pri*ds;
         if nE>0
             lambda = lambda+alpha*dlambda;
-%             lambda = lambda+alpha_pri*dlambda;
         end
         
         k=k+1;
