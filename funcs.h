@@ -1,50 +1,34 @@
+#ifndef FUNCS_H_
+#define FUNCS_H_
 
-void Block_Fill(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG);
+#include "pdip_common.h"
 
-void Block_Fill_Trans(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG);
+/* Functions */
+void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *mu, pdip_dims *dim, pdip_workspace *work);
 
-void Block_Access(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG);
+void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work);
 
-bool vec_bigger(size_t n, double *a, double *b);
-
-void set_zeros(size_t n, double *a);
-
-void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *mu, double *phi, double *phi_N,
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N);
-
-void compute_LY(double *phi, double *phi_N, double *A, double *B, double *LY,
-        size_t nx, size_t nu, size_t N);
-
-void lin_solve(double *LY, double *sol, size_t nx, size_t nu, size_t N);
+void lin_solve(pdip_dims *dim, pdip_workspace *work);
 
 void compute_rC(double *Q, double *S, double *R, double *A, double *B, double *C,
-        double *g, double *w, double *lambda, double *mu,
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *rc);
+                double *g, double *w, double *lambda, double *mu, pdip_dims *dim, pdip_workspace *work);
 
-void compute_rE(double *A, double *B, double *w, double *b,
-        size_t nx, size_t nu, size_t N, double *rE);
+void compute_rE(double *A, double *B, double *w, double *b, pdip_dims *dim, pdip_workspace *work);
 
-void compute_rI(double *C, double *c, double *w, double *mu, double *s,
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *rI);
+void compute_rI(double *C, double *c, double *w, double *mu, double *s, pdip_dims *dim, pdip_workspace *work);
 
-void compute_rs(double *mu, double *s, double *dmu, double *ds, double sigma, double t, 
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *rs);
+void compute_rs(double *mu, double *s, pdip_dims *dim, pdip_workspace *work);
 
-void compute_rd(double *C, double *c, double *mu, double *s, double *rI, double *rC, double *rs,
-        double *dmu, double *ds, size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *rd);
+void compute_rd(double *C, double *c, double *mu, double *s, pdip_dims *dim, pdip_workspace *work);
 
-void compute_beta(double *A, double *B, double *rE, double *rd, double *phi, double *phi_N, 
-        size_t nx, size_t nu, size_t N, double *beta);
+void compute_beta(double *A, double *B, pdip_dims *dim, pdip_workspace *work);
 
-void recover_dw(double *A, double *B, double *rd, double *phi, double *phi_N, double *dlambda, 
-        size_t nx, size_t nu, size_t N, double *dw);
+void recover_dw(double *A, double *B, pdip_dims *dim, pdip_workspace *work);
 
-void recover_dmu(double *C, double *mu, double *s, double *rI, double *dw, double *rs,
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *dmu);
+void recover_dmu(double *C, double *mu, double *s, pdip_dims *dim, pdip_workspace *work);
 
-void recover_ds(double *C, double *rI, double *dw,
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *ds);
+void recover_ds(double *C, pdip_dims *dim, pdip_workspace *work);
 
-// void compute_rd_corrector(double *C, double *c, double *mu, double *s, double *rI, double *rC,
-//         double *dmu, double *ds, double sigma, double t,
-//         size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *rd);
+void compute_fval(double *Q, double *S, double *R, double *g, double *w, pdip_dims *dim, pdip_workspace *work);
+
+#endif

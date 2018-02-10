@@ -1,83 +1,36 @@
 #include "mex.h"
 #include "stdlib.h"
 #include "string.h"
+#include "pdip_common.h"
+#include "common.h"
 #include "funcs.h"
 #include "blas.h"
 #include "lapack.h"
 
-void Block_Fill(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG){
-       
-    size_t i,j;
-    size_t s;
-    for (j=0;j<n;j++){
-        s = idn*ldG + idm + j*ldG;
-        for (i=0;i<m;i++){
-            G[s+i] = Gi[j*m+i];
-        }
-    }
-       
-}
-
-void Block_Fill_Trans(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG){
-       
-    size_t i,j;
-    size_t s;
-    for (j=0;j<m;j++){
-        s = idn*ldG + idm + j*ldG;
-        for (i=0;i<n;i++){
-            G[s+i] = Gi[i*m+j];
-        }
-    }      
-}
-
-void Block_Access(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG){
-       
-    size_t i,j;
-    size_t s;
-    for (j=0;j<n;j++){
-        s = idn*ldG + idm + j*ldG;
-        for (i=0;i<m;i++){
-            Gi[j*m+i]=G[s+i];
-        }
-    }
-       
-}
-
-bool vec_bigger(size_t n, double *a, double *b){
-    int i;
-    size_t sum=0;
-    bool flag = false;
-    for(i=0;i<n;i++){
-        if (a[i]>=b[i])
-            sum += 1;
-    }
-    if (sum==n)
-        flag = true;
-    return flag;
-}
-
-void set_zeros(size_t n, double *a){
-    int i;
-    for (i=0;i<n;i++)
-        a[i] = 0;
-}
-
-
-void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *mu, double *phi, double *phi_N,
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N)
+/* Functions */
+void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *mu, pdip_dims *dim, pdip_workspace *work)
 {
-    size_t nz = nx+nu;
-    double *Ci = mxMalloc(nc*nz*sizeof(double));
-    double *hat_s_inv = mxCalloc(nc*nc, sizeof(double));
-    double *hat_mu = mxCalloc(nc*nc, sizeof(double));
-    double *tmp1 = mxMalloc(nz*nc*sizeof(double));
-    double *tmp2 = mxMalloc(nz*nc*sizeof(double));
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t nz = dim->nz;
+    size_t N =dim->N;
     
-    double *CN = mxMalloc(ncN*nx*sizeof(double));
-    double *hat_sN_inv = mxCalloc(ncN*ncN, sizeof(double));
-    double *hat_muN = mxCalloc(ncN*ncN, sizeof(double));
-    double *tmp1N = mxMalloc(nx*ncN*sizeof(double));
-    double *tmp2N = mxMalloc(nx*ncN*sizeof(double));
+    double *Ci = work->Ci;
+    double *hat_s_inv = work->hat_s_inv;
+    double *hat_mu = work->hat_mu;
+    double *tmp1 = work->tmp1;
+    double *tmp2 = work->tmp2;
+    
+    double *CN = work->CN;
+    double *hat_sN_inv = work->hat_sN_inv;
+    double *hat_muN = work->hat_muN;
+    double *tmp1N = work->tmp1N;
+    double *tmp2N = work->tmp2N;
+    
+    double *phi = work->phi;
+    double *phi_N = work->phi_N;
     
     int i,j;
     mwSize INFO;
@@ -115,44 +68,38 @@ void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *
     dgemm(noTRANS, noTRANS, &nx, &ncN, &ncN, &one_d, tmp1N, &nx, hat_muN, &ncN, &zero_d, tmp2N, &nx);
     dgemm(noTRANS, noTRANS, &nx, &nx, &ncN, &one_d, tmp2N, &nx, CN, &ncN, &one_d, phi_N, &nx);
     
-    dpotrf(UPLO, &nx, phi_N, &nx, &INFO);
-    
-    mxFree(Ci);
-    mxFree(hat_s_inv);
-    mxFree(hat_mu);
-    mxFree(tmp1);
-    mxFree(tmp2);
-    mxFree(CN);
-    mxFree(hat_sN_inv);
-    mxFree(hat_muN);
-    mxFree(tmp1N);
-    mxFree(tmp2N);
-    
+    dpotrf(UPLO, &nx, phi_N, &nx, &INFO);    
 }
 
-void compute_LY(double *phi, double *phi_N, double *A, double *B, double *LY,
-        size_t nx, size_t nu, size_t N)
+void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
 {
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t nz = dim->nz;
+    size_t N =dim->N;
+    
     int i;
-    size_t nz = nx+nu;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
     
-    double *D = mxCalloc(nx*nz,sizeof(double));
-    for (i=0;i<nx;i++)
-        D[i*nx+i]= -1.0; // this is D_1
+    double *phi = work->phi;
+    double *phi_N = work->phi_N;
     
-    double *DN = mxCalloc(nx*nx,sizeof(double));
+    double *D = work->D;
     for (i=0;i<nx;i++)
-        DN[i*nx+i]= -1.0; // this is D_N
-    
-    double *V = mxCalloc(nx*nz*(N+1),sizeof(double));    
+        D[i*nx+i]= -1.0; // this is D_1    
+    double *DN = work->DN;
     for (i=0;i<nx;i++)
-        V[i*nx+i]= 1.0; // this is Z_{-1}
-        
-    double *W = mxCalloc(nx*nz*(N-1),sizeof(double));
+        DN[i*nx+i]= -1.0; // this is D_N    
+    double *V = work->V;
+    for (i=0;i<nx;i++)
+        V[i*nx+i]= 1.0; // this is Z_{-1}        
+    double *W = work->W;    
+    double *LY = work->LY;
     
     // solve V_{-1}L_0^T = Z{-1}
     dtrsm(SIDE, UPLO, TRANS, DIAG, &nx, &nz, &one_d, phi, &nz, V, &nx);
@@ -215,15 +162,18 @@ void compute_LY(double *phi, double *phi_N, double *A, double *B, double *LY,
     // L(N,N)
     dgemm(TRANS, noTRANS, &nx, &nx, &nx, &minus_one_d, LY+(2*N-1)*nx*nx, &nx, LY+(2*N-1)*nx*nx, &nx, &one_d, LY+2*N*nx*nx, &nx);
     dpotrf(UPLO, &nx, LY+2*N*nx*nx, &nx, &INFO);
-    
-    mxFree(D);
-    mxFree(DN);
-    mxFree(V);
-    mxFree(W);
 }
 
-void lin_solve(double *LY, double *sol, size_t nx, size_t nu, size_t N)
+void lin_solve(pdip_dims *dim, pdip_workspace *work)
 {
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nz = dim->nz;
+    size_t N =dim->N;
+    
+    double *LY = work->LY;
+    double *sol = work->dlambda;
+    
     int i;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
@@ -248,18 +198,24 @@ void lin_solve(double *LY, double *sol, size_t nx, size_t nu, size_t N)
 }
 
 void compute_rC(double *Q, double *S, double *R, double *A, double *B, double *C,
-        double *g, double *w, double *lambda, double *mu,
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *rc)
+        double *g, double *w, double *lambda, double *mu, pdip_dims *dim, pdip_workspace *work)
 {
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t nz = dim->nz;
+    size_t N =dim->N;
+    
     int i;
-    size_t nz = nx+nu;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
     
-    double *Ci = mxMalloc(nc*nz*sizeof(double));
-    double *CN = mxMalloc(ncN*nx*sizeof(double));
+    double *Ci = work->Ci;
+    double *CN = work->CN;
+    double *rc = work->rC;
     
     memcpy(rc,g,(N*nz+nx)*sizeof(double));
     Block_Access(nc,nz,Ci,C,0,0,N*nc+ncN);
@@ -296,16 +252,21 @@ void compute_rC(double *Q, double *S, double *R, double *A, double *B, double *C
     dgemv(TRANS, &ncN, &nx, &one_d, CN, &ncN, mu+N*nc, &one_i, &one_d, rc+N*nz, &one_i);
     daxpy(&nx,&minus_one_d,lambda+N*nx,&one_i,rc+N*nz,&one_i);
     
-    mxFree(Ci);
-    mxFree(CN);
 }
 
-void compute_rE(double *A, double *B, double *w, double *b,
-        size_t nx, size_t nu, size_t N, double *rE)
+void compute_rE(double *A, double *B, double *w, double *b, pdip_dims *dim, pdip_workspace *work)
 {
-    int i;
-    size_t nz = nx+nu;
-    size_t neq = (N+1)*nx;
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t N =dim->N;
+    size_t nz = dim->nz;
+    size_t neq = dim->neq;
+    
+    double *rE = work->rE;
+    
+    int i;    
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
@@ -321,19 +282,26 @@ void compute_rE(double *A, double *B, double *w, double *b,
     }
 }
 
-void compute_rI(double *C, double *c, double *w, double *mu, double *s,
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *rI)
+void compute_rI(double *C, double *c, double *w, double *mu, double *s, pdip_dims *dim, pdip_workspace *work)
 {
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t N =dim->N;
+    size_t nz = dim->nz;
+    size_t nineq = dim->nineq;
+    
+    double *rI = work->rI;
+    
     int i;
-    size_t nz = nx+nu;
-    size_t nineq = N*nc+ncN;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
     
-    double *Ci = mxMalloc(nc*nz*sizeof(double));
-    double *CN = mxMalloc(ncN*nx*sizeof(double));
+    double *Ci = work->Ci;
+    double *CN = work->CN;
     
     memcpy(rI, c, nineq*sizeof(double));
     daxpy(&nineq,&one_d,s,&one_i,rI,&one_i);
@@ -344,14 +312,22 @@ void compute_rI(double *C, double *c, double *w, double *mu, double *s,
     }
     Block_Access(ncN,nx,CN,C,N*nc,N*nz,N*nc+ncN);
     dgemv(noTRANS, &ncN, &nx, &one_d, CN, &ncN, w+N*nz, &one_i, &one_d, rI+N*nc, &one_i);
-    
-    mxFree(Ci);
-    mxFree(CN);
+  
 }
 
-void compute_rs(double *mu, double *s, double *dmu, double *ds, double sigma, double t, 
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *rs)
+void compute_rs(double *mu, double *s, pdip_dims *dim, pdip_workspace *work)
 {
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t N =dim->N;
+    
+    double sigma = work->sigma;
+    double t = work->t;
+    double *dmu = work->dmu;
+    double *ds = work->ds;
+    
+    double *rs = work->rs;
+    
     int i,j;
            
     for (i=0;i<N;i++){
@@ -363,32 +339,39 @@ void compute_rs(double *mu, double *s, double *dmu, double *ds, double sigma, do
     
 }
 
-void compute_rd(double *C, double *c, double *mu, double *s, double *rI, double *rC, double *rs,
-        double *dmu, double *ds, 
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *rd)
+void compute_rd(double *C, double *c, double *mu, double *s, pdip_dims *dim, pdip_workspace *work)
 {
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t N =dim->N;
+    size_t nz = dim->nz;
+    size_t nineq = dim->nineq;
+    
+    double *Ci = work->Ci;
+    double *hat_s_inv = work->hat_s_inv;
+    double *hat_mu = work->hat_mu;
+    double *tmp = work->tmp1;   
+    double *CN = work->CN;
+    double *hat_sN_inv = work->hat_sN_inv;
+    double *hat_muN = work->hat_muN;
+    double *tmpN = work->tmp1N;    
+    double *e = work->e;
+    
+    double *rI = work->rI;
+    double *rs = work->rs;
+    double *rC = work->rC;
+    double *dmu = work->dmu;
+    double *ds = work->ds;
+    double *rd = work->rd;
+    
     int i,j;
-    size_t nz = nx+nu;
-    size_t nineq = N*nc+ncN;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
-    
-    double *Ci = mxMalloc(nc*nz*sizeof(double));
-    double *CN = mxMalloc(ncN*nx*sizeof(double));
-    
-    double *hat_s_inv = mxCalloc(nc*nc, sizeof(double));    
-    double *hat_sN_inv = mxCalloc(ncN*ncN, sizeof(double));
-    
-    double *hat_mu = mxCalloc(nc*nc, sizeof(double));
-    double *hat_muN = mxCalloc(ncN*ncN, sizeof(double));
-    
-    double *e = mxMalloc(nineq*sizeof(double));
-
-    double *tmp = mxMalloc(nz*nc*sizeof(double));
-    double *tmpN = mxMalloc(nx*ncN*sizeof(double));
-    
+        
     memcpy(rd, rC, (N*nz+nx)*sizeof(double));
     memcpy(e, rs, nineq*sizeof(double));
     
@@ -411,29 +394,31 @@ void compute_rd(double *C, double *c, double *mu, double *s, double *rI, double 
     dgemv(noTRANS, &ncN, &ncN, &minus_one_d, hat_muN, &ncN, rI+N*nc, &one_i, &one_d, e+N*nc, &one_i);       
     dgemv(noTRANS, &nx, &ncN, &one_d, tmpN, &nx, e+N*nc, &one_i, &one_d, rd+N*nz, &one_i);        
     
-    mxFree(Ci);
-    mxFree(CN);
-    mxFree(hat_s_inv);
-    mxFree(hat_sN_inv);
-    mxFree(hat_mu);
-    mxFree(hat_muN);
-    mxFree(tmp);
-    mxFree(tmpN);
-    mxFree(e);
 }
 
-void compute_beta(double *A, double *B, double *rE, double *rd, double *phi, double *phi_N, 
-        size_t nx, size_t nu, size_t N, double *beta)
+void compute_beta(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
 {
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t N =dim->N;
+    size_t nz = dim->nz;
+    size_t neq = dim->neq;
+    
+    double *rE = work->rE;
+    double *rd = work->rd;
+    double *phi = work->phi;
+    double *phi_N = work->phi_N;
+    double *beta = work->dlambda;
+    
     int i,j;
-    size_t nz = nx+nu;
-    size_t neq = (N+1)*nx;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
     
-    double *Z = mxCalloc(nx*nz, sizeof(double));
+    double *Z = work->D;
     for (i=0;i<nx;i++)
         Z[i*nx+i] = 1.0;
     
@@ -461,12 +446,23 @@ void compute_beta(double *A, double *B, double *rE, double *rd, double *phi, dou
         
 }
 
-void recover_dw(double *A, double *B, double *rd, double *phi, double *phi_N, double *dlambda, 
-        size_t nx, size_t nu, size_t N, double *dw)
+void recover_dw(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
 {
-    int i,j;
-    size_t nz = nx+nu;
-    size_t nw = N*nz+nx;
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t N =dim->N;
+    size_t nz = dim->nz;
+    size_t nw = dim->nw;
+    
+    double *rd = work->rd;
+    double *phi = work->phi;
+    double *phi_N = work->phi_N;
+    double *dlambda = work->dlambda;
+    double *dw = work->dw;
+    
+    int i;  
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
@@ -490,19 +486,29 @@ void recover_dw(double *A, double *B, double *rd, double *phi, double *phi_N, do
     daxpy(&nw, &minus_one_d, rd, &one_i, dw, &one_i);
 }
 
-void recover_dmu(double *C, double *mu, double *s, double *rI, double *dw, double *rs,
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *dmu)
+void recover_dmu(double *C, double *mu, double *s, pdip_dims *dim, pdip_workspace *work)
 {
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t N =dim->N;
+    size_t nz = dim->nz;
+    size_t nineq = dim->nineq;
+    
+    double *rI = work->rI;
+    double *rs = work->rs;
+    double *dw = work->dw;
+    double *dmu = work->dmu;
+       
     int i,j;
-    size_t nz = nx+nu;
-    size_t nineq = N*nc+ncN;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
     
-    double *Ci = mxMalloc(nc*nz*sizeof(double));
-    double *CN = mxMalloc(ncN*nx*sizeof(double));
+    double *Ci = work->Ci;
+    double *CN = work->CN;
         
     memcpy(dmu, rI, nineq*sizeof(double));
     
@@ -521,23 +527,30 @@ void recover_dmu(double *C, double *mu, double *s, double *rI, double *dw, doubl
         dmu[N*nc+j] -= 1/s[N*nc+j] * rs[N*nc+j];
     }
     
-    mxFree(Ci);
-    mxFree(CN);
 }
 
-void recover_ds(double *C, double *rI, double *dw,
-        size_t nx, size_t nu, size_t nc, size_t ncN, size_t N, double *ds)
+void recover_ds(double *C, pdip_dims *dim, pdip_workspace *work)
 {
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t N =dim->N;
+    size_t nz = dim->nz;
+    size_t nineq = dim->nineq;
+    
+    double *rI = work->rI;
+    double *dw = work->dw;
+    double *ds = work->ds;
+    
     int i,j;
-    size_t nz = nx+nu;
-    size_t nineq = N*nc+ncN;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
     
-    double *Ci = mxMalloc(nc*nz*sizeof(double));
-    double *CN = mxMalloc(ncN*nx*sizeof(double));
+    double *Ci = work->Ci;
+    double *CN = work->CN;
     
     memcpy(ds, rI, nineq*sizeof(double));
     
@@ -548,7 +561,33 @@ void recover_ds(double *C, double *rI, double *dw,
     Block_Access(ncN,nx,CN,C,N*nc,N*nz,N*nc+ncN);
     dgemv(noTRANS, &ncN, &nx, &minus_one_d, CN, &ncN, dw+N*nz, &one_i, &minus_one_d, ds+N*nc, &one_i);
     
-    mxFree(Ci);
-    mxFree(CN);
+}
+
+void compute_fval(double *Q, double *S, double *R, double *g, double *w, pdip_dims *dim, pdip_workspace *work)
+{
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t N =dim->N;
+    size_t nz = dim->nz;
+    
+    double *fval = work->fval;
+    
+    int i;
+    mwSize INFO;
+    char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
+    double one_d = 1.0, zero_d=0.0, half = 0.5;
+    mwSize one_i = 1;
+       
+    memcpy(fval,g,(N*nz+nx)*sizeof(double));
+        
+    for (i=0;i<N;i++){
+        dgemv(noTRANS, &nx, &nx, &half, Q+i*nx*nx, &nx, w+i*nz, &one_i, &one_d, fval+i*nz, &one_i);
+        dgemv(noTRANS, &nx, &nu, &half, S+i*nx*nu, &nx, w+i*nz+nx, &one_i, &one_d, fval+i*nz, &one_i);
+        
+        dgemv(TRANS, &nx, &nu, &half, S+i*nx*nu, &nx, w+i*nz, &one_i, &one_d, fval+i*nz+nx, &one_i);
+        dgemv(noTRANS, &nu, &nu, &half, R+i*nu*nu, &nu, w+i*nz+nx, &one_i, &one_d, fval+i*nz+nx, &one_i);
+    }
+            
+    dgemv(noTRANS, &nx, &nx, &half, Q+N*nx*nx, &nx, w+N*nz, &one_i, &one_d, fval+N*nz, &one_i);   
     
 }

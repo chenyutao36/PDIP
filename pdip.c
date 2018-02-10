@@ -1,6 +1,8 @@
 #include "mex.h"
 #include "string.h"
+#include "pdip_common.h"
 #include "funcs.h"
+#include "common.h"
 #include "blas.h"
 #include "math.h"
 
@@ -44,29 +46,34 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
         mu[i] = 10;
     }
                
-    /* Allocate Memory */        
-    double *phi = mxMalloc(nz*nz*N*sizeof(double));
-    double *phi_N = mxMalloc(nx*nx*sizeof(double));
-    double *LY = mxMalloc((2*nx*nx*N+nx*nx)*sizeof(double));
+    /* Allocate Memory */            
+    pdip_dims dim;
+    dim.nx = nx;
+    dim.nu = nu;
+    dim.nc = nc;
+    dim.ncN = ncN;
+    dim.N = N;
+    dim.nz = nz;
+    dim.nw = nw;
+    dim.neq = neq;
+    dim.nineq = nineq;
+     
+    int size = pdip_calculate_workspace_size(&dim);
+    void *work = mxMalloc(size);
+    pdip_workspace *workspace = (pdip_workspace *) pdip_cast_workspace(&dim, work);
+    pdip_init_workspace(&dim, workspace);
     
-    double *rC = mxMalloc(nw*sizeof(double));
-    double *rE = mxMalloc(neq*sizeof(double));
-    double *rI = mxMalloc(nineq*sizeof(double));
-    double *rs = mxMalloc(nineq*sizeof(double));
-    double *rd = mxMalloc(nw*sizeof(double));
-        
-    double *dw = mxMalloc(nw*sizeof(double));
-    double *dlambda = mxMalloc(neq*sizeof(double));   
-    double *dmu = mxMalloc(nineq*sizeof(double));
-    double *ds = mxMalloc(nineq*sizeof(double));
-    
-    double *s_new = mxMalloc(nineq*sizeof(double));
-    double *mu_new = mxMalloc(nineq*sizeof(double));
+    double *s_new = workspace->s_new;
+    double *mu_new = workspace->mu_new;
+    double *dw = workspace->dw;
+    double *dlambda = workspace->dlambda;
+    double *ds = workspace->ds;
+    double *dmu = workspace->dmu;
     
     /* Define constants*/    
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
-    double sigma, t, t_aff, tau=0.8, sca;
+    double t_aff, sca;
     double alpha, alpha_aff, alpha_pri_tau, alpha_dual_tau;
     int it_max = 100;
     double measure = 1E+4;
@@ -75,37 +82,40 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
         
     /* Start loop*/
     while (it<it_max && measure>tol){    
-        sigma=0; t=0;      
-        set_zeros(nineq, dmu);
-        set_zeros(nineq, ds);
+        workspace->sigma=0; 
+        workspace->t=0;      
+        set_zeros(nineq, workspace->dmu);
+        set_zeros(nineq, workspace->ds);
+        
+        /* Predictor */
 
         /* Compute residuals */
-        compute_rC(Q, S, R, A, B, C, g, w, lambda, mu, nx, nu, nc, ncN, N, rC);  
-        compute_rE(A, B, w, b, nx, nu, N, rE);    
-        compute_rI(C, c, w, mu, s, nx, nu, nc, ncN, N, rI);     
-        compute_rs(mu, s, dmu, ds, sigma, t, nx, nu, nc, ncN, N, rs);
-        compute_rd(C, c, mu, s, rI, rC, rs, dmu, ds, nx, nu, nc, ncN, N, rd); 
+        compute_rC(Q, S, R, A, B, C, g, w, lambda, mu, &dim, workspace);  
+        compute_rE(A, B, w, b, &dim, workspace);    
+        compute_rI(C, c, w, mu, s, &dim, workspace);     
+        compute_rs(mu, s, &dim, workspace);
+        compute_rd(C, c, mu, s, &dim, workspace); 
 
         /* Compute phi and its Cholesky factor L, stored in phi */
-        compute_phi(Q, S, R, C, s, mu, phi, phi_N, nx, nu, nc, ncN, N);  
+        compute_phi(Q, S, R, C, s, mu, &dim, workspace);  
 
         /* Compute beta*/
         /* on exit, rd is the solution of phi_k^{-1} r_d^k */
-        compute_beta(A, B, rE, rd, phi, phi_N, nx, nu, N, dlambda);     
+        compute_beta(A, B, &dim, workspace);     
 
         /* Compute Y and its Cholesky factor LY, stored in LY */
-        compute_LY(phi, phi_N, A, B, LY, nx, nu, N);
+        compute_LY(A, B, &dim, workspace);
 
         /* Solve the normal equation */
-        lin_solve(LY, dlambda, nx, nu, N); 
+        lin_solve(&dim, workspace); 
 
         /* Recover primal solution */
-        recover_dw(A, B, rd, phi, phi_N, dlambda, nx, nu, N, dw);    
-        recover_dmu(C, mu, s, rI, dw, rs, nx, nu, nc, ncN, N, dmu);    
-        recover_ds(C, rI, dw, nx, nu, nc, ncN, N, ds);
+        recover_dw(A, B, &dim, workspace);    
+        recover_dmu(C, mu, s, &dim, workspace);    
+        recover_ds(C, &dim, workspace);
 
-        /* Choose parameters*/
-        t = ddot(&nineq, s, &one_i, mu, &one_i)/nineq;
+        /* Compute centering parameter sigma*/
+        workspace->t = ddot(&nineq, s, &one_i, mu, &one_i)/nineq;
         alpha_aff = 1;
         memcpy(s_new, s, nineq*sizeof(double));
         memcpy(mu_new, mu, nineq*sizeof(double));
@@ -121,19 +131,19 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
             t_aff = ddot(&nineq, s_new, &one_i, mu_new, &one_i);
         }
         t_aff = t_aff/nineq;
-        sigma = pow((t_aff/t),3);
+        workspace->sigma = pow((t_aff/workspace->t),3);
         
         /* Corrector */
-        compute_rs(mu, s, dmu, ds, sigma, t, nx, nu, nc, ncN, N, rs);
-        compute_rd(C, c, mu, s, rI, rC, rs, dmu, ds, nx, nu, nc, ncN, N, rd);
-        compute_beta(A, B, rE, rd, phi, phi_N, nx, nu, N, dlambda);   
-        lin_solve(LY, dlambda, nx, nu, N); 
-        recover_dw(A, B, rd, phi, phi_N, dlambda, nx, nu, N, dw);    
-        recover_dmu(C, mu, s, rI, dw, rs, nx, nu, nc, ncN, N, dmu);    
-        recover_ds(C, rI, dw, nx, nu, nc, ncN, N, ds);
+        compute_rs(mu, s, &dim, workspace);
+        compute_rd(C, c, mu, s, &dim, workspace); 
+        compute_beta(A, B, &dim, workspace); 
+        lin_solve(&dim, workspace);
+        recover_dw(A, B, &dim, workspace);    
+        recover_dmu(C, mu, s, &dim, workspace);    
+        recover_ds(C, &dim, workspace);
 
         /* Step length selection*/
-        sca = 1-tau;
+        sca = 1-workspace->tau;
         
         alpha_pri_tau=1;
         memcpy(s_new, s, nineq*sizeof(double));
@@ -170,40 +180,27 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
         daxpy(&nineq, &alpha, ds, &one_i, s, &one_i);
 
         /* Measure Optimality*/
-        compute_rC(Q, S, R, A, B, C, g, w, lambda, mu, nx, nu, nc, ncN, N, rC);  
-        compute_rE(A, B, w, b, nx, nu, N, rE);    
-        compute_rI(C, c, w, mu, s, nx, nu, nc, ncN, N, rI);     
+        compute_rC(Q, S, R, A, B, C, g, w, lambda, mu, &dim, workspace);  
+        compute_rE(A, B, w, b, &dim, workspace);    
+        compute_rI(C, c, w, mu, s, &dim, workspace);      
 
-        measure = ddot(&nw, rC, &one_i, rC, &one_i) + ddot(&neq, rE, &one_i, rE, &one_i)
-                  + ddot(&nineq, rI, &one_i, rI, &one_i) + ddot(&nineq, s, &one_i, mu, &one_i);
+        measure = ddot(&nw, workspace->rC, &one_i, workspace->rC, &one_i) + ddot(&neq, workspace->rE, &one_i, workspace->rE, &one_i)
+                  + ddot(&nineq, workspace->rI, &one_i, workspace->rI, &one_i) + ddot(&nineq, s, &one_i, mu, &one_i);
                      
         it++;
         
-        tau = exp(-0.2/it);
+        workspace->tau = exp(-0.2/it);
         
     }
     
+    /* Compute 0.5*Hw+g and then the optimal value*/
+    compute_fval(Q, S, R, g, w, &dim, workspace);
+    double fval = ddot(&nw, w, &one_i, workspace->fval, &one_i); 
+    
     plhs[4] = mxCreateDoubleScalar(measure);
     plhs[5] = mxCreateDoubleScalar((double) it);
+    plhs[6] = mxCreateDoubleScalar(fval);
         
     /* Free memory */
-    mxFree(phi);
-    mxFree(phi_N);
-    
-    mxFree(LY);
-    
-    mxFree(rC);
-    mxFree(rE);
-    mxFree(rI);
-    mxFree(rs);
-    mxFree(rd);
-    
-    mxFree(dw);
-    mxFree(dlambda);
-    mxFree(dmu);
-    mxFree(ds);
-    
-    mxFree(s_new);
-    mxFree(mu_new);
-    
+    mxFree(work);    
 }

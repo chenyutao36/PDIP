@@ -49,9 +49,8 @@ tic;
 [w,lambda,mu,s,info] = pdip_multistage(H,g,B,b,C,c);
 toc;
 
-tau = 0.9;
 tic;
-[w_mex, lambda_mex, mu_mex, s_mex, OM, IT] = pdip(mem.Q_h,mem.S, mem.R, mem.A_sens, mem.B_sens, C, g,b,c,4,1,4,2,40);
+[w_mex, lambda_mex, mu_mex, s_mex, OM, IT, fval] = pdip(mem.Q_h,mem.S, mem.R, mem.A_sens, mem.B_sens, C, g,b,c,4,1,4,2,40);
 toc;
 
 % options = optimoptions('quadprog','Algorithm','interior-point-convex','Display','iter');
