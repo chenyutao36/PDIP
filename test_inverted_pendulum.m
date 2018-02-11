@@ -2,17 +2,17 @@ clear;close all;clc;
 
 load myData;
 
-mem.lc(1) = -2;
-mem.uc(1) = 2;
-
 N=settings.N;
 nx=settings.nx;
 nu=settings.nu;
+nbu=settings.nbu;
 nc=settings.nc;
 ncN=settings.ncN;
 
-nbu=1;
-nbu_idx=1;
+neq = (N+1)*nx;
+nw = N*(nx+nu)+nx;
+
+nbu_idx=settings.nbu_idx;
 Cu = zeros(nbu,nu);
 for j=1:nbu
     Cu(j,nbu_idx(j))=1;
@@ -20,7 +20,7 @@ end
 
 H=[];
 g=[];
-B=zeros(settings.neq,settings.nw);   B(1:nx,1:nx)=eye(nx);
+B=zeros(neq,nw);   B(1:nx,1:nx)=eye(nx);
 b=mem.ds0;
 C=[];
 c=[];
@@ -36,9 +36,14 @@ for i=1:N
         
     Ci=[mem.Cx(:,(i-1)*nx+1:i*nx), mem.Cu(:,(i-1)*nu+1:i*nu);zeros(nbu,nx), Cu];
     C=blkdiag(C,[Ci;-Ci]);
-    ub_du = mem.ub_du((i-1)*nu+1:i*nu);
-    lb_du = mem.lb_du((i-1)*nu+1:i*nu);
-    c=[c;-mem.uc((i-1)*nc+1:i*nc);-ub_du(nbu_idx);mem.lc((i-1)*nc+1:i*nc);lb_du(nbu_idx)];    
+    
+    if nbu>0
+        ub_du = mem.ub_du((i-1)*nu+1:i*nu);
+        lb_du = mem.lb_du((i-1)*nu+1:i*nu);
+        c=[c;-mem.uc((i-1)*nc+1:i*nc);-ub_du(nbu_idx);mem.lc((i-1)*nc+1:i*nc);lb_du(nbu_idx)];  
+    else
+        c=[c;-mem.uc((i-1)*nc+1:i*nc);mem.lc((i-1)*nc+1:i*nc)]; 
+    end
 end
 H=blkdiag(H,mem.Q_h(:,N*nx+1:(N+1)*nx));
 g=[g;mem.gx(:,N+1)];
@@ -49,9 +54,17 @@ tic;
 [w,lambda,mu,s,info] = pdip_multistage(H,g,B,b,C,c);
 toc;
 
+% tic;
+% [w,lambda,mu,s,info] = pdip_general(H,g,B,b,C,c);
+% toc;
+
 tic;
-[w_mex, lambda_mex, mu_mex, s_mex, OM, IT, fval] = pdip(mem.Q_h,mem.S, mem.R, mem.A_sens, mem.B_sens, C, g,b,c,4,1,4,2,40);
+nc=(settings.nc+nbu)*2;
+ncN=settings.ncN*2;
+[w_mex, lambda_mex, mu_mex, s_mex, OM, IT, fval] = pdip(mem.Q_h,mem.S, mem.R, mem.A_sens, mem.B_sens, C, g,b,c,nx,nu,nc,ncN,N);
 toc;
 
-% options = optimoptions('quadprog','Algorithm','interior-point-convex','Display','iter');
+% options = optimoptions('quadprog','Algorithm','interior-point-convex','Display','off');
+% tic;
 % [x,fval,exitflag,output,multipliers] = quadprog(H,g,C,-c,B,-b,[],[],[],options);
+% toc;

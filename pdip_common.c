@@ -155,8 +155,8 @@ void *pdip_cast_workspace(pdip_dims *dim, void *raw_memory)
     c_ptr += nx*nz*(N-1)*sizeof(double);
        
 //     assert((char*)raw_memory + pdip_calculate_workspace_size(dim) >= c_ptr);
-    mexPrintf("size calculated: %d\n", pdip_calculate_workspace_size(dim));
-    mexPrintf("pointer moved: %d\n", c_ptr - (char*)raw_memory);
+//     mexPrintf("size calculated: %d\n", pdip_calculate_workspace_size(dim));
+//     mexPrintf("pointer moved: %d\n", c_ptr - (char*)raw_memory);
 
     return (void *)workspace;
 
@@ -179,7 +179,7 @@ void *pdip_init_workspace(pdip_dims *dim, pdip_workspace *work){
     set_zeros(nx*nz*(N+1), work->V);
     set_zeros(nx*nz*(N-1), work->W);
     
-    work->tau = 0.8;
+    work->tau = 0.9;
 }
 
 

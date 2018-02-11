@@ -1,6 +1,4 @@
-function [w,lambda,mu,s,info] = pdip(H,g,B,b,C,c)
-
-    load myData;
+function [w,lambda,mu,s,info] = pdip_general(H,g,B,b,C,c)
 
     nw = size(H,1);
     nE = size(B,1);
@@ -17,7 +15,7 @@ function [w,lambda,mu,s,info] = pdip(H,g,B,b,C,c)
     maxIT = 100;
     TOL = 1e-8;
     k=0;
-    tau = 0.9;
+    tau = 0.8;
     OM=1e8;
     while k<maxIT && OM>TOL
 
@@ -27,42 +25,26 @@ function [w,lambda,mu,s,info] = pdip(H,g,B,b,C,c)
         
         rI = c+ C*w + s;
         rS = S*L*e;
+        phi = H + C'*iS*L*C;       
         if nE>0
             rC = H*w+g+B'*lambda+C'*mu;
-            rE = b + B*w;
             rd = -C'*iS*(rS-L*rI)+rC;
-            
-            phi = H + C'*iS*L*C;
-            beta = rE-B/phi*rd;           
-            Y = B/phi*B';
-            
-%             [Y_test,LY_test] = Coeff_Normal(mem.A_sens,mem.B_sens,phi,4,1,40);
-
-%             [sol_aff] = Lin_Solve(mem.A_sens,mem.B_sens,phi,4,1,40,beta);
-
-            [sol_aff] = Lin_Solve(mem.Q_h,mem.S, mem.R, mem.A_sens, mem.B_sens,...
-                                               4,1,4,2,40,beta,s,mu,C);
-                                    
-            KKT_LHS=Y;           
-            
-            KKT_RHS = beta;
-        else
-            KKT_LHS = H + C'*iS*L*C;
+            rE = b + B*w;           
+            KKT_LHS = [phi, B'; B, zeros(nE, nE)];            
+            KKT_RHS = [-rd; -rE];
+        else           
             rC = H*w+g+C'*mu;
-            KKT_RHS = C'*iS*(rS-L*rI)-rC;
+            rd = -C'*iS*(rS-L*rI)+rC;
+            KKT_LHS = phi;
+            KKT_RHS = -rd;
         end
         
-%         sol_aff = linsolve(KKT_LHS, KKT_RHS, opts);    
-        
-%         sol_aff = BackSolve(LY,KKT_RHS,4,40);   
-
-%         norm(sol_aff - sol_aff_test)
-        
+        sol_aff = linsolve(KKT_LHS, KKT_RHS, opts);    
+                
         if nE>0
-            dlambda_aff = sol_aff(1:nE);
-            dw_aff = linsolve(phi,-rd-B'*dlambda_aff);
-        else
             dw_aff = sol_aff(1:nw);
+        else
+            dw_aff = sol_aff;
         end
         dmu_aff = iS*L*(rI+C*dw_aff)-iS*rS;        
         ds_aff = -C*dw_aff-rI;
@@ -70,7 +52,7 @@ function [w,lambda,mu,s,info] = pdip(H,g,B,b,C,c)
         t = s'*mu/nI;
         
         alpha_aff = 1;
-        while (s+alpha_aff*ds_aff)'*(mu+alpha_aff*dmu_aff)<=0
+        while (s+alpha_aff*ds_aff)'*(mu+alpha_aff*dmu_aff)<=0 && alpha_aff>1e-12
             alpha_aff = alpha_aff*0.95;
         end
         
@@ -82,17 +64,16 @@ function [w,lambda,mu,s,info] = pdip(H,g,B,b,C,c)
         rS = S*L*e - sigma*t*e + dL_aff*dS_aff*e;
         if nE>0 
             rd = -C'*iS*(rS-L*rI)+rC;
-            beta = rE-B/phi*rd;
-            KKT_RHS = beta;
+            KKT_RHS = [-rd; -rE];
         else           
-            KKT_RHS = C'*iS*(rS-L*rI)-rC;
+            KKT_RHS = -rd;
         end
         
         sol = linsolve(KKT_LHS, KKT_RHS, opts);
         
         if nE>0
-            dlambda = sol(1:nE);
-            dw = linsolve(phi,-rd-B'*dlambda);
+            dw = sol(1:nw);
+            dlambda = sol(nw+1:end);
         else
             dw = sol(1:nw);
         end
@@ -100,11 +81,11 @@ function [w,lambda,mu,s,info] = pdip(H,g,B,b,C,c)
         ds = -C*dw-rI;
         
         alpha_pri_tau=1;
-        while sum(s+alpha_pri_tau*ds>=(1-tau)*s)<nI
+        while sum(s+alpha_pri_tau*ds>=(1-tau)*s)<nI && alpha_pri_tau>1e-12
             alpha_pri_tau = alpha_pri_tau*0.95;
         end
         alpha_dual_tau=1;
-        while sum(mu+alpha_dual_tau*dmu>=(1-tau)*mu)<nI
+        while sum(mu+alpha_dual_tau*dmu>=(1-tau)*mu)<nI && alpha_dual_tau>1e-12
             alpha_dual_tau = alpha_dual_tau*0.95;
         end
                 

@@ -1,7 +1,5 @@
 function [w,lambda,mu,s,info] = pdip_multistage(H,g,B,b,C,c)
 
-    load myData;
-
     nw = size(H,1);
     nE = size(B,1);
     nI = size(C,1);
@@ -15,9 +13,9 @@ function [w,lambda,mu,s,info] = pdip_multistage(H,g,B,b,C,c)
     opts.SYM = true;
     
     maxIT = 100;
-    TOL = 1e-8;
+    TOL = 1e-4;
     k=0;
-    tau = 0.8;
+    tau = 0.9;
     OM=1e8;
     while k<maxIT && OM>TOL
 
@@ -43,7 +41,7 @@ function [w,lambda,mu,s,info] = pdip_multistage(H,g,B,b,C,c)
         t = s'*mu/nI;
         
         alpha_aff = 1;
-        while (s+alpha_aff*ds_aff)'*(mu+alpha_aff*dmu_aff)<=0
+        while (s+alpha_aff*ds_aff)'*(mu+alpha_aff*dmu_aff)<=0 && alpha_aff>1e-12
             alpha_aff = alpha_aff*0.95;
         end
         
@@ -64,11 +62,11 @@ function [w,lambda,mu,s,info] = pdip_multistage(H,g,B,b,C,c)
         
 
         alpha_pri_tau=1;
-        while sum(s+alpha_pri_tau*ds>=(1-tau)*s)<nI
+        while sum(s+alpha_pri_tau*ds>=(1-tau)*s)<nI && alpha_pri_tau>1e-12
             alpha_pri_tau = alpha_pri_tau*0.95;
         end
         alpha_dual_tau=1;
-        while sum(mu+alpha_dual_tau*dmu>=(1-tau)*mu)<nI
+        while sum(mu+alpha_dual_tau*dmu>=(1-tau)*mu)<nI && alpha_dual_tau>1e-12
             alpha_dual_tau = alpha_dual_tau*0.95;
         end
                       
@@ -83,7 +81,7 @@ function [w,lambda,mu,s,info] = pdip_multistage(H,g,B,b,C,c)
               
         OM = norm(H*w+g+B'*lambda+C'*mu)^2 + norm(c+C*w+s)^2 + s'*mu + norm(b+B*w)^2;
                 
-        tau = exp(-.2/k);
+        tau = exp(-.1/k);
                     
     end
     

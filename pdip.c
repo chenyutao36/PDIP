@@ -77,7 +77,7 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
     double alpha, alpha_aff, alpha_pri_tau, alpha_dual_tau;
     int it_max = 100;
     double measure = 1E+4;
-    double tol = 1E-8;
+    double tol = 1E-4;
     int it=0;
         
     /* Start loop*/
@@ -189,7 +189,7 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
                      
         it++;
         
-        workspace->tau = exp(-0.2/it);
+        workspace->tau = exp(-0.1/it);
         
     }
     
