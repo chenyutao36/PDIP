@@ -13,7 +13,7 @@ function [w,lambda,mu,s,info] = pdip_multistage(H,g,B,b,C,c)
     opts.SYM = true;
     
     maxIT = 100;
-    TOL = 1e-4;
+    TOL = 1e-8;
     k=0;
     tau = 0.9;
     OM=1e8;
@@ -76,10 +76,17 @@ function [w,lambda,mu,s,info] = pdip_multistage(H,g,B,b,C,c)
         lambda = lambda+alpha*dlambda;
         mu = mu+alpha*dmu;
         s = s+alpha*ds;
+        
+        dual_res = norm(H*w+g+B'*lambda+C'*mu)^2;
+        eq_res = norm(b+B*w)^2;
+        ineq_res = norm(c+C*w+s)^2;
+        comp_res = s'*mu;
               
         k=k+1;
+        
+        disp(['It:' num2str(k) '   Dual Residual:' num2str(dual_res) '   Equality Residual:' num2str(eq_res) '  Inequality Residual:' num2str(ineq_res) '   Complementary Residual:' num2str(comp_res)]);
               
-        OM = norm(H*w+g+B'*lambda+C'*mu)^2 + norm(c+C*w+s)^2 + s'*mu + norm(b+B*w)^2;
+        OM = dual_res + eq_res + ineq_res + comp_res;
                 
         tau = exp(-.1/k);
                     

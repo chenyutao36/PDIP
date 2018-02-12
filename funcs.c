@@ -56,6 +56,14 @@ void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *
         
         dpotrf(UPLO, &nz, phi+i*nz*nz, &nz, &INFO);
         
+        if (INFO<0){
+            mexPrintf("the %d-th argument had an illegal value\n in %d-th block of phi", -1*INFO, i);
+            mexErrMsgTxt("Error occured when factorizing phi");
+        }
+        if (INFO>0){
+            mexPrintf("the leading minor of order %d is not positive definite in %d-th block of phi, and the factorization could not be completed\n", INFO, i);
+            mexErrMsgTxt("Error occured when factorizing phi");
+        }
     }
     memcpy(phi_N, Q+N*nx*nx, nx*nx*sizeof(double));
     Block_Access(ncN,nx,CN,C,N*nc,N*nz,N*nc+ncN);
@@ -68,7 +76,15 @@ void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *
     dgemm(noTRANS, noTRANS, &nx, &ncN, &ncN, &one_d, tmp1N, &nx, hat_muN, &ncN, &zero_d, tmp2N, &nx);
     dgemm(noTRANS, noTRANS, &nx, &nx, &ncN, &one_d, tmp2N, &nx, CN, &ncN, &one_d, phi_N, &nx);
     
-    dpotrf(UPLO, &nx, phi_N, &nx, &INFO);    
+    dpotrf(UPLO, &nx, phi_N, &nx, &INFO);
+    if (INFO<0){
+        mexPrintf("the %d-th argument had an illegal value in %d-th block of phi\n", -1*INFO,N);
+        mexErrMsgTxt("Error occured when factorizing phi_N");
+    }
+    if (INFO>0){
+        mexPrintf("the leading minor of order %d is not positive definite in %d-th block of phi, and the factorization could not be completed\n", INFO, N);
+        mexErrMsgTxt("Error occured when factorizing phi_N");
+    }
 }
 
 void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
@@ -129,7 +145,15 @@ void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
     dgemm(noTRANS, TRANS, &nx, &nx, &nz, &one_d, V, &nx, V, &nx, &zero_d, LY, &nx);
     
     // L00
-    dpotrf(UPLO, &nx, LY, &nx, &INFO);
+    dpotrf(UPLO, &nx, LY, &nx, &INFO);    
+    if (INFO<0){
+        mexPrintf("the %d-th argument had an illegal value\n", -1*INFO);
+        mexErrMsgTxt("Error occured when factorizing Y");
+    }
+    if (INFO>0){
+        mexPrintf("the leading minor of order %d is not positive definite, and the factorization could not be completed\n", INFO);
+        mexErrMsgTxt("Error occured when factorizing Y");
+    }
         
     // Y01
     dgemm(noTRANS, TRANS, &nx, &nx, &nz, &one_d, V, &nx, V+nx*nz, &nx, &zero_d, LY+nx*nx, &nx);
@@ -146,6 +170,14 @@ void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
         // L(i,i)
         dgemm(TRANS, noTRANS, &nx, &nx, &nx, &minus_one_d, LY+(2*i-1)*nx*nx, &nx, LY+(2*i-1)*nx*nx, &nx, &one_d, LY+2*i*nx*nx, &nx);
         dpotrf(UPLO, &nx, LY+2*i*nx*nx, &nx, &INFO);
+        if (INFO<0){
+            mexPrintf("the %d-th argument had an illegal value\n", -1*INFO);
+            mexErrMsgTxt("Error occured when factorizing Y");
+        }
+        if (INFO>0){
+            mexPrintf("the leading minor of order %d is not positive definite, and the factorization could not be completed\n", INFO);
+            mexErrMsgTxt("Error occured when factorizing Y");
+        }
                         
         // Y(i,i+1)
         dgemm(noTRANS, TRANS, &nx, &nx, &nz, &one_d, W+(i-1)*nz*nx, &nx, V+(i+1)*nz*nx, &nx, &zero_d, LY+(2*i+1)*nx*nx, &nx);
@@ -162,6 +194,14 @@ void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
     // L(N,N)
     dgemm(TRANS, noTRANS, &nx, &nx, &nx, &minus_one_d, LY+(2*N-1)*nx*nx, &nx, LY+(2*N-1)*nx*nx, &nx, &one_d, LY+2*N*nx*nx, &nx);
     dpotrf(UPLO, &nx, LY+2*N*nx*nx, &nx, &INFO);
+    if (INFO<0){
+        mexPrintf("the %d-th argument had an illegal value\n", -1*INFO);
+        mexErrMsgTxt("Error occured when factorizing Y");
+    }
+    if (INFO>0){
+        mexPrintf("the leading minor of order %d is not positive definite, and the factorization could not be completed\n", INFO);
+        mexErrMsgTxt("Error occured when factorizing Y");
+    }
 }
 
 void lin_solve(pdip_dims *dim, pdip_workspace *work)
@@ -273,9 +313,10 @@ void compute_rE(double *A, double *B, double *w, double *b, pdip_dims *dim, pdip
     mwSize one_i = 1;
     
     memcpy(rE, b, neq*sizeof(double));
-    daxpy(&nx, &one_d, w, &one_i, rE, &one_i);
+    for (i=1;i<nx;i++)
+        rE[i] += w[i]; 
  
-    for (i=1;i<N;i++){
+    for (i=1;i<N+1;i++){
         dgemv(noTRANS, &nx, &nx, &one_d, A+(i-1)*nx*nx, &nx, w+(i-1)*nz, &one_i, &one_d, rE+i*nx, &one_i);
         dgemv(noTRANS, &nx, &nu, &one_d, B+(i-1)*nx*nu, &nx, w+(i-1)*nz+nx, &one_i, &one_d, rE+i*nx, &one_i);
         daxpy(&nx, &minus_one_d, w+i*nz, &one_i, rE+i*nx, &one_i);

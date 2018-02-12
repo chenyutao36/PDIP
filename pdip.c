@@ -11,20 +11,24 @@
 void
 mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
 {    
-    double *Q = mxGetPr(prhs[0]);
-    double *S = mxGetPr(prhs[1]);
-    double *R = mxGetPr(prhs[2]);
-    double *A = mxGetPr(prhs[3]);
-    double *B = mxGetPr(prhs[4]);
-    double *C = mxGetPr(prhs[5]);
-    double *g = mxGetPr(prhs[6]);
-    double *b = mxGetPr(prhs[7]);
-    double *c = mxGetPr(prhs[8]);  
-    mwSize nx = mxGetScalar(prhs[9]);
-    mwSize nu = mxGetScalar(prhs[10]);
-    mwSize nc = mxGetScalar(prhs[11]);
-    mwSize ncN = mxGetScalar(prhs[12]);
-    mwSize N = mxGetScalar(prhs[13]);
+    
+    double *Q = mxGetPr( mxGetField(prhs[0], 0, "Q_h") );
+    double *S = mxGetPr( mxGetField(prhs[0], 0, "S") );
+    double *R = mxGetPr( mxGetField(prhs[0], 0, "R") );
+    double *A = mxGetPr( mxGetField(prhs[0], 0, "A_sens") );
+    double *B = mxGetPr( mxGetField(prhs[0], 0, "B_sens") );
+    double *C = mxGetPr(prhs[1]);
+    double *g = mxGetPr(prhs[2]);
+    double *b = mxGetPr(prhs[3]);
+    double *c = mxGetPr(prhs[4]);  
+    mwSize nx = mxGetScalar(prhs[5]);
+    mwSize nu = mxGetScalar(prhs[6]);
+    mwSize nc = mxGetScalar(prhs[7]);
+    mwSize ncN = mxGetScalar(prhs[8]);
+    mwSize N = mxGetScalar(prhs[9]);
+    mwSize it_max = mxGetScalar( mxGetField(prhs[10], 0, "it_max") );
+    double tol = mxGetScalar( mxGetField(prhs[10], 0, "tol") );
+    int prt = mxGetScalar( mxGetField(prhs[10], 0, "print_level") );
     
     mwSize nz = nx+nu;
     mwSize nw = N*nz+nx;
@@ -75,10 +79,16 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
     mwSize one_i = 1;
     double t_aff, sca;
     double alpha, alpha_aff, alpha_pri_tau, alpha_dual_tau;
-    int it_max = 100;
-    double measure = 1E+4;
-    double tol = 1E-4;
+    double measure = fabs(tol)*2;
     int it=0;
+    
+    if (prt>0){
+        mexPrintf("%-10s","It:");
+        mexPrintf("%-20s","Dual Residual");
+        mexPrintf("%-25s","Equality Residual");
+        mexPrintf("%-25s","Inequality Residual");
+        mexPrintf("%-25s\n","Complementary Residual");
+    }
         
     /* Start loop*/
     while (it<it_max && measure>tol){    
@@ -183,11 +193,23 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
         compute_rC(Q, S, R, A, B, C, g, w, lambda, mu, &dim, workspace);  
         compute_rE(A, B, w, b, &dim, workspace);    
         compute_rI(C, c, w, mu, s, &dim, workspace);      
-
-        measure = ddot(&nw, workspace->rC, &one_i, workspace->rC, &one_i) + ddot(&neq, workspace->rE, &one_i, workspace->rE, &one_i)
-                  + ddot(&nineq, workspace->rI, &one_i, workspace->rI, &one_i) + ddot(&nineq, s, &one_i, mu, &one_i);
+        
+        double dual_res = ddot(&nw, workspace->rC, &one_i, workspace->rC, &one_i);
+        double eq_res = ddot(&neq, workspace->rE, &one_i, workspace->rE, &one_i);
+        double ineq_res = ddot(&nineq, workspace->rI, &one_i, workspace->rI, &one_i);
+        double comp_res = ddot(&nineq, s, &one_i, mu, &one_i);
+        
+        measure = dual_res + eq_res + ineq_res + comp_res;
                      
         it++;
+        
+        if (prt>0){
+            mexPrintf("%-10d",it);
+            mexPrintf("%-20.3e",dual_res);
+            mexPrintf("%-25.3e",eq_res);
+            mexPrintf("%-25.3e",ineq_res);
+            mexPrintf("%-25.3e\n",comp_res);
+        }
         
         workspace->tau = exp(-0.1/it);
         
