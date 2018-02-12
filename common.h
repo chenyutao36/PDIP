@@ -14,4 +14,6 @@ bool vec_bigger(size_t n, double *a, double *b);
 
 void set_zeros(size_t n, double *a);
 
+void regularization(size_t n, double *A, double reg);
+
 #endif

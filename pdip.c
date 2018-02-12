@@ -21,14 +21,15 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
     double *g = mxGetPr(prhs[2]);
     double *b = mxGetPr(prhs[3]);
     double *c = mxGetPr(prhs[4]);  
-    mwSize nx = mxGetScalar(prhs[5]);
-    mwSize nu = mxGetScalar(prhs[6]);
-    mwSize nc = mxGetScalar(prhs[7]);
-    mwSize ncN = mxGetScalar(prhs[8]);
-    mwSize N = mxGetScalar(prhs[9]);
-    mwSize it_max = mxGetScalar( mxGetField(prhs[10], 0, "it_max") );
-    double tol = mxGetScalar( mxGetField(prhs[10], 0, "tol") );
-    int prt = mxGetScalar( mxGetField(prhs[10], 0, "print_level") );
+    mwSize nx = mxGetScalar( mxGetField(prhs[5], 0, "nx") );
+    mwSize nu = mxGetScalar( mxGetField(prhs[5], 0, "nu") );
+    mwSize nc = mxGetScalar( mxGetField(prhs[5], 0, "nc") );
+    mwSize ncN = mxGetScalar( mxGetField(prhs[5], 0, "ncN") );
+    mwSize N = mxGetScalar( mxGetField(prhs[5], 0, "N") );
+    mwSize it_max = mxGetScalar( mxGetField(prhs[6], 0, "it_max") );
+    double tol = mxGetScalar( mxGetField(prhs[6], 0, "tol") );
+    int prt = mxGetScalar( mxGetField(prhs[6], 0, "print_level") );
+    double reg = mxGetScalar( mxGetField(prhs[6], 0, "reg") );
     
     mwSize nz = nx+nu;
     mwSize nw = N*nz+nx;
@@ -74,6 +75,8 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
     double *ds = workspace->ds;
     double *dmu = workspace->dmu;
     
+    workspace->reg = reg;
+    
     /* Define constants*/    
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
@@ -87,7 +90,7 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
         mexPrintf("%-20s","Dual Residual");
         mexPrintf("%-25s","Equality Residual");
         mexPrintf("%-25s","Inequality Residual");
-        mexPrintf("%-25s\n","Complementary Residual");
+        mexPrintf("%-25s\n","Complementarity Residual");
     }
         
     /* Start loop*/

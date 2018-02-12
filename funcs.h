@@ -4,6 +4,7 @@
 #include "pdip_common.h"
 
 /* Functions */
+
 void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *mu, pdip_dims *dim, pdip_workspace *work);
 
 void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work);

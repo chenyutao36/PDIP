@@ -57,3 +57,9 @@ void set_zeros(size_t n, double *a){
     for (i=0;i<n;i++)
         a[i] = 0;
 }
+
+void regularization(size_t n, double *A, double reg){
+    int i;
+    for (i=0;i<n;i++)
+        A[i*n+i] += reg;
+}

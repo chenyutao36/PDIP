@@ -23,6 +23,8 @@ typedef struct{
     double sigma;
     double t;
     
+    double reg;
+    
     double *phi;
     double *phi_N;
     double *LY;    

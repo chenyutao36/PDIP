@@ -32,6 +32,8 @@ void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *
     double *phi = work->phi;
     double *phi_N = work->phi_N;
     
+    double reg = work->reg;
+    
     int i,j;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
@@ -54,6 +56,8 @@ void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *
         dgemm(noTRANS, noTRANS, &nz, &nc, &nc, &one_d, tmp1, &nz, hat_mu, &nc, &zero_d, tmp2, &nz);
         dgemm(noTRANS, noTRANS, &nz, &nz, &nc, &one_d, tmp2, &nz, Ci, &nc, &one_d, phi+i*nz*nz, &nz);
         
+        regularization(nz, phi+i*nz*nz, reg);
+               
         dpotrf(UPLO, &nz, phi+i*nz*nz, &nz, &INFO);
         
         if (INFO<0){
@@ -75,6 +79,8 @@ void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *
     dgemm(TRANS, noTRANS, &nx, &ncN, &ncN, &one_d, CN, &ncN, hat_sN_inv, &ncN, &zero_d, tmp1N, &nx);
     dgemm(noTRANS, noTRANS, &nx, &ncN, &ncN, &one_d, tmp1N, &nx, hat_muN, &ncN, &zero_d, tmp2N, &nx);
     dgemm(noTRANS, noTRANS, &nx, &nx, &ncN, &one_d, tmp2N, &nx, CN, &ncN, &one_d, phi_N, &nx);
+    
+    regularization(nx, phi_N, reg);
     
     dpotrf(UPLO, &nx, phi_N, &nx, &INFO);
     if (INFO<0){

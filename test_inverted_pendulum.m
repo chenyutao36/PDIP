@@ -1,6 +1,7 @@
 clear;close all;clc;
 
-load myData_TiltHex;
+% load myData_TiltHex;
+load myData_IP;
 
 N=settings.N;
 nx=settings.nx;
@@ -52,7 +53,7 @@ c=[c;-mem.uc(N*nc+1:N*nc+ncN);mem.lc(N*nc+1:N*nc+ncN)];
 
 for i=1:nw
     if H(i,i)==0
-        H(i,i) = 1e-6;
+        H(i,i) = 1e-12;
     end
 end
 
@@ -66,34 +67,18 @@ end
 % toc;
 
 %%
-nc=(settings.nc+nbu)*2;
-ncN=settings.ncN*2;
-for i=1:N
-    for j=1:nx
-        if mem.Q_h(j,(i-1)*nx+j)==0
-            mem.Q_h(j,(i-1)*nx+j) = 1e-6;
-        end
-    end
-    
-    for j=1:nu
-        if mem.R(j,(i-1)*nu+j)==0
-            mem.R(j,(i-1)*nu+j) = 1e-6;
-        end
-    end
-end
-for j=1:nx
-    if mem.Q_h(j,N*nx+j)==0
-        mem.Q_h(j,N*nx+j) = 1e-6;
-    end
-end
+settings.nc=(settings.nc+nbu)*2;
+settings.ncN=settings.ncN*2;
 
 opts.it_max=50;
 opts.tol = 1e-8;
-opts.print_level = 0;
+opts.print_level = 1;
+opts.reg = 0;
 tic;
-[w_mex, lambda_mex, mu_mex, s_mex, OM, IT, fval] = pdip(mem,C, g,b,c,nx,nu,nc,ncN,N, opts);
+[w_mex, lambda_mex, mu_mex, s_mex, OM, IT, fval] = pdip(mem, C,g, b, c, settings, opts);
 toc;
 
+%%
 % options = optimoptions('quadprog','Algorithm','interior-point-convex','Display','iter');
 % tic;
 % [x,fval,exitflag,output,multipliers] = quadprog(H,g,C,-c,B,-b,[],[],[],options);
