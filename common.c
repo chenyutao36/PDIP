@@ -1,20 +1,22 @@
+
 #include "stdlib.h"
 #include <stdbool.h>
+#include "mex.h"
 
-void Block_Fill(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG){
+void Block_Fill(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG, double alpha){
        
     size_t i,j;
     size_t s;
     for (j=0;j<n;j++){
         s = idn*ldG + idm + j*ldG;
         for (i=0;i<m;i++){
-            G[s+i] = Gi[j*m+i];
+            G[s+i] = alpha * Gi[j*m+i];
         }
     }
        
 }
 
-void Block_Fill_Trans(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG){
+void Block_Fill_Trans(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG, double alpha){
        
     size_t i,j;
     size_t s;
@@ -26,7 +28,7 @@ void Block_Fill_Trans(size_t m, size_t n, double *Gi, double *G, size_t idm, siz
     }      
 }
 
-void Block_Access(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG){
+void Block_Access(size_t m, size_t n, double *Gi, double *G, size_t idm, size_t idn, size_t ldG, double alpha){
        
     size_t i,j;
     size_t s;
@@ -62,4 +64,30 @@ void regularization(size_t n, double *A, double reg){
     int i;
     for (i=0;i<n;i++)
         A[i*n+i] += reg;
+}
+
+void print_matrix(size_t m, size_t n, double *A, size_t ldA)
+{
+    int i,j;
+    for(i=0;i<m;i++){
+        for(j=0;j<n;j++)
+            mexPrintf("%4.2e ",A[j*ldA+i]);
+        mexPrintf("\n");
+    }
+}
+
+void print_vector(size_t n, double *a)
+{
+    int i;
+    for(i=0;i<n;i++)      
+        mexPrintf("%4.2e ",a[i]);
+    mexPrintf("\n");
+}
+
+void print_vector_int(size_t n, int *a)
+{
+    int i;
+    for(i=0;i<n;i++)      
+        mexPrintf("%d ",a[i]);
+    mexPrintf("\n");
 }

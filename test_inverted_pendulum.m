@@ -1,7 +1,7 @@
 clear;close all;clc;
 
-% load myData_TiltHex;
-load myData_IP;
+load myData_TiltHex;
+% load myData_IP;
 
 N=settings.N;
 nx=settings.nx;
@@ -53,33 +53,31 @@ c=[c;-mem.uc(N*nc+1:N*nc+ncN);mem.lc(N*nc+1:N*nc+ncN)];
 
 for i=1:nw
     if H(i,i)==0
-        H(i,i) = 1e-12;
+        H(i,i) = 1e-8;
     end
 end
 
 %%
 % tic;
-% [w,lambda,mu,s,info] = pdip_multistage(H,g,B,b,C,c);
+% [w_ref,lambda_ref,mu_ref,s,info] = pdip_multistage(H,g,B,b,C,c);
 % toc;
 %%
 % tic;
-% [w,lambda,mu,s,info] = pdip_general(H,g,B,b,C,c);
+% [w_ref,lambda_ref,mu_ref,s,info] = pdip_general(H,g,B,b,C,c);
 % toc;
 
 %%
-settings.nc=(settings.nc+nbu)*2;
-settings.ncN=settings.ncN*2;
 
 opts.it_max=50;
 opts.tol = 1e-8;
 opts.print_level = 1;
-opts.reg = 0;
+opts.reg = 1e-12;
 tic;
-[w_mex, lambda_mex, mu_mex, s_mex, OM, IT, fval] = pdip(mem, C,g, b, c, settings, opts);
+[w, lambda, mu] = blockIP(mem, settings, opts);
 toc;
 
 %%
-% options = optimoptions('quadprog','Algorithm','interior-point-convex','Display','iter');
+% options = optimoptions('quadprog','Algorithm','interior-point-convex','Display','off');
 % tic;
 % [x,fval,exitflag,output,multipliers] = quadprog(H,g,C,-c,B,-b,[],[],[],options);
 % toc;

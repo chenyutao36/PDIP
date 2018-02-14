@@ -1,29 +1,38 @@
 #include "mex.h"
 #include "stdlib.h"
 #include "string.h"
-#include "pdip_common.h"
+#include "blockIP_common.h"
 #include "common.h"
-#include "funcs.h"
+#include "blockIP_funcs.h"
 #include "blas.h"
 #include "lapack.h"
 
 /* Functions */
-void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *mu, pdip_dims *dim, pdip_workspace *work)
+void compute_phi(pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
     size_t nc = dim->nc;
     size_t ncN = dim->ncN;
+    size_t nbu = dim->nbu;
     size_t nz = dim->nz;
     size_t N =dim->N;
     
-    double *Ci = work->Ci;
+    size_t row_C = 2*(nbu+nc);
+    size_t row_CN = 2*ncN;
+    
+    double *Cz = work->Cz;
+    double *CzN = work->CzN;
+    double *H = work->H;
+    double *HN = work->HN;
+    double *mu = work->mu;
+    double *s = work->s;
+    
     double *hat_s_inv = work->hat_s_inv;
     double *hat_mu = work->hat_mu;
     double *tmp1 = work->tmp1;
     double *tmp2 = work->tmp2;
     
-    double *CN = work->CN;
     double *hat_sN_inv = work->hat_sN_inv;
     double *hat_muN = work->hat_muN;
     double *tmp1N = work->tmp1N;
@@ -31,65 +40,57 @@ void compute_phi(double *Q, double *S, double *R, double *C, double *s, double *
     
     double *phi = work->phi;
     double *phi_N = work->phi_N;
-    
-    double reg = work->reg;
-    
+          
     int i,j;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
     
+    memcpy(phi, H, nz*nz*N*sizeof(double));
+    
     for (i=0;i<N;i++){
-        Block_Fill(nx,nx,Q+i*nx*nx,phi+i*nz*nz,0,0,nz);
-        Block_Fill(nx,nu,S+i*nx*nu,phi+i*nz*nz,0,nx,nz);
-        Block_Fill_Trans(nx,nu,S+i*nx*nu,phi+i*nz*nz,nx,0,nz);
-        Block_Fill(nu,nu,R+i*nu*nu,phi+i*nz*nz,nx,nx,nz);
-        
-        Block_Access(nc,nz,Ci,C,i*nc,i*nz,N*nc+ncN);
-        for (j=0;j<nc;j++){
-            hat_s_inv[j*nc+j] = 1/s[i*nc+j];
-            hat_mu[j*nc+j] = mu[i*nc+j];
+
+        for (j=0;j<row_C;j++){
+            hat_s_inv[j*row_C+j] = 1/s[i*row_C+j];
+            hat_mu[j*row_C+j] = mu[i*row_C+j];
         }
         
-        dgemm(TRANS, noTRANS, &nz, &nc, &nc, &one_d, Ci, &nc, hat_s_inv, &nc, &zero_d, tmp1, &nz);
-        dgemm(noTRANS, noTRANS, &nz, &nc, &nc, &one_d, tmp1, &nz, hat_mu, &nc, &zero_d, tmp2, &nz);
-        dgemm(noTRANS, noTRANS, &nz, &nz, &nc, &one_d, tmp2, &nz, Ci, &nc, &one_d, phi+i*nz*nz, &nz);
-        
-        regularization(nz, phi+i*nz*nz, reg);
-               
+        dgemm(TRANS, noTRANS, &nz, &row_C, &row_C, &one_d, Cz+i*row_C*nz, &row_C, hat_s_inv, &row_C, &zero_d, tmp1, &nz);
+        dgemm(noTRANS, noTRANS, &nz, &row_C, &row_C, &one_d, tmp1, &nz, hat_mu, &row_C, &zero_d, tmp2, &nz);
+        dgemm(noTRANS, noTRANS, &nz, &nz, &row_C, &one_d, tmp2, &nz, Cz+i*row_C*nz, &row_C, &one_d, phi+i*nz*nz, &nz);
+                       
         dpotrf(UPLO, &nz, phi+i*nz*nz, &nz, &INFO);
         
         if (INFO<0){
-            mexPrintf("the %d-th argument had an illegal value\n in %d-th block of phi", -1*INFO, i);
+            mexPrintf("the %d-th argument had an illegal value\n in phi_%d", -1*INFO, i);
             mexErrMsgTxt("Error occured when factorizing phi");
         }
         if (INFO>0){
-            mexPrintf("the leading minor of order %d is not positive definite in %d-th block of phi, and the factorization could not be completed\n", INFO, i);
+            mexPrintf("the leading minor of order %d is not positive definite in phi_%d\n", INFO, i);
             mexErrMsgTxt("Error occured when factorizing phi");
         }
     }
-    memcpy(phi_N, Q+N*nx*nx, nx*nx*sizeof(double));
-    Block_Access(ncN,nx,CN,C,N*nc,N*nz,N*nc+ncN);
-    for (j=0;j<ncN;j++){
-        hat_sN_inv[j*ncN+j] = 1/s[N*nc+j];
-        hat_muN[j*ncN+j] = mu[N*nc+j];
+    memcpy(phi_N, HN, nx*nx*sizeof(double));
+    
+    for (j=0;j<row_CN;j++){
+        hat_sN_inv[j*row_CN+j] = 1/s[N*row_C+j];
+        hat_muN[j*row_CN+j] = mu[N*row_C+j];
     }
     
-    dgemm(TRANS, noTRANS, &nx, &ncN, &ncN, &one_d, CN, &ncN, hat_sN_inv, &ncN, &zero_d, tmp1N, &nx);
-    dgemm(noTRANS, noTRANS, &nx, &ncN, &ncN, &one_d, tmp1N, &nx, hat_muN, &ncN, &zero_d, tmp2N, &nx);
-    dgemm(noTRANS, noTRANS, &nx, &nx, &ncN, &one_d, tmp2N, &nx, CN, &ncN, &one_d, phi_N, &nx);
-    
-    regularization(nx, phi_N, reg);
-    
+    dgemm(TRANS, noTRANS, &nx, &row_CN, &row_CN, &one_d, CzN, &row_CN, hat_sN_inv, &row_CN, &zero_d, tmp1N, &nx);
+    dgemm(noTRANS, noTRANS, &nx, &row_CN, &row_CN, &one_d, tmp1N, &nx, hat_muN, &row_CN, &zero_d, tmp2N, &nx);
+    dgemm(noTRANS, noTRANS, &nx, &nx, &row_CN, &one_d, tmp2N, &nx, CzN, &row_CN, &one_d, phi_N, &nx);
+          
     dpotrf(UPLO, &nx, phi_N, &nx, &INFO);
+    
     if (INFO<0){
-        mexPrintf("the %d-th argument had an illegal value in %d-th block of phi\n", -1*INFO,N);
-        mexErrMsgTxt("Error occured when factorizing phi_N");
+        mexPrintf("the %d-th argument had an illegal value in phi_N\n", -1*INFO, N);
+        mexErrMsgTxt("Error occured when factorizing phi");
     }
     if (INFO>0){
-        mexPrintf("the leading minor of order %d is not positive definite in %d-th block of phi, and the factorization could not be completed\n", INFO, N);
-        mexErrMsgTxt("Error occured when factorizing phi_N");
+        mexPrintf("the leading minor of order %d is not positive definite in phi_N\n", INFO, N);
+        mexErrMsgTxt("Error occured when factorizing phi");
     }
 }
 
@@ -97,11 +98,9 @@ void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
-    size_t nc = dim->nc;
-    size_t ncN = dim->ncN;
     size_t nz = dim->nz;
     size_t N =dim->N;
-    
+        
     int i;
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
@@ -111,32 +110,29 @@ void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
     double *phi = work->phi;
     double *phi_N = work->phi_N;
     
-    double *D = work->D;
-    for (i=0;i<nx;i++)
-        D[i*nx+i]= -1.0; // this is D_1    
-    double *DN = work->DN;
-    for (i=0;i<nx;i++)
-        DN[i*nx+i]= -1.0; // this is D_N    
-    double *V = work->V;
-    for (i=0;i<nx;i++)
-        V[i*nx+i]= 1.0; // this is Z_{-1}        
+    double *D = work->D;       
+    double *DN = work->DN;      
+    double *V = work->V;         
     double *W = work->W;    
     double *LY = work->LY;
     
+    for(i=0;i<nx;i++)
+        DN[i*nx+i]= -1.0; 
+    
     // solve V_{-1}L_0^T = Z{-1}
+    for(i=0;i<nx;i++)
+        V[i*nx+i]= 1.0; 
     dtrsm(SIDE, UPLO, TRANS, DIAG, &nx, &nz, &one_d, phi, &nz, V, &nx);
         
+     // solve V_0 L_0^T = Z_0
     memcpy(V+nx*nz, A, nx*nx*sizeof(double));
-    memcpy(V+nx*nz+nx*nx, B, nx*nu*sizeof(double));
-    
-    // solve V_0 L_0^T = Z_0
+    memcpy(V+nx*nz+nx*nx, B, nx*nu*sizeof(double));      
     dtrsm(SIDE, UPLO, TRANS, DIAG, &nx, &nz, &one_d, phi, &nz, V+nx*nz, &nx);
     
-    for (i=1; i<N; i++){        
-        memcpy(V+(i+1)*nx*nz, A+i*nx*nx, nx*nx*sizeof(double));
-        memcpy(V+(i+1)*nx*nz+nx*nx, B+i*nx*nu, nx*nu*sizeof(double));
-
+    for (i=1; i<N; i++){  
         // solve V_i L_i^T = Z_i
+        memcpy(V+(i+1)*nx*nz, A+i*nx*nx, nx*nx*sizeof(double));
+        memcpy(V+(i+1)*nx*nz+nx*nx, B+i*nx*nu, nx*nu*sizeof(double));        
         dtrsm(SIDE, UPLO, TRANS, DIAG, &nx, &nz, &one_d, phi+i*nz*nz, &nz, V+(i+1)*nx*nz, &nx);
              
         // solve W_i L_i^T = D_i
@@ -153,11 +149,11 @@ void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
     // L00
     dpotrf(UPLO, &nx, LY, &nx, &INFO);    
     if (INFO<0){
-        mexPrintf("the %d-th argument had an illegal value\n", -1*INFO);
+        mexPrintf("the %d-th argument had an illegal value in Y_00\n", -1*INFO);
         mexErrMsgTxt("Error occured when factorizing Y");
     }
     if (INFO>0){
-        mexPrintf("the leading minor of order %d is not positive definite, and the factorization could not be completed\n", INFO);
+        mexPrintf("the leading minor of order %d is not positive definite in Y_00\n", INFO);
         mexErrMsgTxt("Error occured when factorizing Y");
     }
         
@@ -177,11 +173,11 @@ void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
         dgemm(TRANS, noTRANS, &nx, &nx, &nx, &minus_one_d, LY+(2*i-1)*nx*nx, &nx, LY+(2*i-1)*nx*nx, &nx, &one_d, LY+2*i*nx*nx, &nx);
         dpotrf(UPLO, &nx, LY+2*i*nx*nx, &nx, &INFO);
         if (INFO<0){
-            mexPrintf("the %d-th argument had an illegal value\n", -1*INFO);
+            mexPrintf("the %d-th argument had an illegal value in Y_%d%d\n", -1*INFO, i, i);
             mexErrMsgTxt("Error occured when factorizing Y");
         }
         if (INFO>0){
-            mexPrintf("the leading minor of order %d is not positive definite, and the factorization could not be completed\n", INFO);
+            mexPrintf("the leading minor of order %d is not positive definite in Y_%d%d\n", INFO, i, i);
             mexErrMsgTxt("Error occured when factorizing Y");
         }
                         
@@ -201,13 +197,14 @@ void compute_LY(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
     dgemm(TRANS, noTRANS, &nx, &nx, &nx, &minus_one_d, LY+(2*N-1)*nx*nx, &nx, LY+(2*N-1)*nx*nx, &nx, &one_d, LY+2*N*nx*nx, &nx);
     dpotrf(UPLO, &nx, LY+2*N*nx*nx, &nx, &INFO);
     if (INFO<0){
-        mexPrintf("the %d-th argument had an illegal value\n", -1*INFO);
+        mexPrintf("the %d-th argument had an illegal value in Y_NN\n", -1*INFO);
         mexErrMsgTxt("Error occured when factorizing Y");
     }
     if (INFO>0){
-        mexPrintf("the leading minor of order %d is not positive definite, and the factorization could not be completed\n", INFO);
+        mexPrintf("the leading minor of order %d is not positive definite in Y_NN\n", INFO);
         mexErrMsgTxt("Error occured when factorizing Y");
     }
+    
 }
 
 void lin_solve(pdip_dims *dim, pdip_workspace *work)
@@ -243,15 +240,19 @@ void lin_solve(pdip_dims *dim, pdip_workspace *work)
     }
 }
 
-void compute_rC(double *Q, double *S, double *R, double *A, double *B, double *C,
-        double *g, double *w, double *lambda, double *mu, pdip_dims *dim, pdip_workspace *work)
+void compute_rC(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
     size_t nc = dim->nc;
     size_t ncN = dim->ncN;
+    size_t nbu = dim->nbu;
     size_t nz = dim->nz;
+    size_t nw = dim->nw;
     size_t N =dim->N;
+    
+    size_t row_C = 2*(nbu+nc);
+    size_t row_CN = 2*ncN;
     
     int i;
     mwSize INFO;
@@ -259,57 +260,54 @@ void compute_rC(double *Q, double *S, double *R, double *A, double *B, double *C
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
     
-    double *Ci = work->Ci;
-    double *CN = work->CN;
+    double *Cz = work->Cz;
+    double *CzN = work->CzN;
     double *rc = work->rC;
+    double *H = work->H;
+    double *HN = work->HN;
+    double *g = work->g;
+    double *w = work->w;
+    double *lambda = work->lambda;
+    double *mu = work->mu;
     
-    memcpy(rc,g,(N*nz+nx)*sizeof(double));
-    Block_Access(nc,nz,Ci,C,0,0,N*nc+ncN);
+    memcpy(rc, g, nw*sizeof(double));
+            
+    dgemv(noTRANS, &nz, &nz, &one_d, H, &nz, w, &one_i, &one_d, rc, &one_i);
+    dgemv(TRANS, &row_C, &nz, &one_d, Cz, &row_C, mu, &one_i, &one_d, rc, &one_i);
     
-    dgemv(noTRANS, &nx, &nx, &one_d, Q, &nx, w, &one_i, &one_d, rc, &one_i);
-    dgemv(noTRANS, &nx, &nu, &one_d, S, &nx, w+nx, &one_i, &one_d, rc, &one_i);
-    dgemv(TRANS, &nx, &nx, &one_d, A, &nx, lambda+nx, &one_i, &one_d, rc, &one_i);
-    dgemv(TRANS, &nc, &nx, &one_d, Ci, &nc, mu, &one_i, &one_d, rc, &one_i);
-    daxpy(&nx,&one_d,lambda,&one_i,rc,&one_i);
+    dgemv(TRANS, &nx, &nx, &one_d, A, &nx, lambda+nx, &one_i, &one_d, rc, &one_i);    
+    daxpy(&nx, &one_d, lambda, &one_i,rc, &one_i);
     
-    dgemv(TRANS, &nx, &nu, &one_d, S, &nx, w, &one_i, &one_d, rc+nx, &one_i);
-    dgemv(noTRANS, &nu, &nu, &one_d, R, &nu, w+nx, &one_i, &one_d, rc+nx, &one_i);
     dgemv(TRANS, &nx, &nu, &one_d, B, &nx, lambda+nx, &one_i, &one_d, rc+nx, &one_i);
-    dgemv(TRANS, &nc, &nu, &one_d, Ci+nc*nx, &nc, mu, &one_i, &one_d, rc+nx, &one_i);
+    
     
     for (i=1;i<N;i++){
         
-        Block_Access(nc,nz,Ci,C,i*nc,i*nz,N*nc+ncN);
+        dgemv(noTRANS, &nz, &nz, &one_d, H+i*nz*nz, &nz, w+i*nz, &one_i, &one_d, rc+i*nz, &one_i);
+        dgemv(TRANS, &row_C, &nz, &one_d, Cz+i*row_C*nz, &row_C, mu+i*row_C, &one_i, &one_d, rc+i*nz, &one_i);
         
-        dgemv(noTRANS, &nx, &nx, &one_d, Q+i*nx*nx, &nx, w+i*nz, &one_i, &one_d, rc+i*nz, &one_i);
-        dgemv(noTRANS, &nx, &nu, &one_d, S+i*nx*nu, &nx, w+i*nz+nx, &one_i, &one_d, rc+i*nz, &one_i);
-        dgemv(TRANS, &nx, &nx, &one_d, A+i*nx*nx, &nx, lambda+(i+1)*nx, &one_i, &one_d, rc+i*nz, &one_i);
-        dgemv(TRANS, &nc, &nx, &one_d, Ci, &nc, mu+i*nc, &one_i, &one_d, rc+i*nz, &one_i);
+        dgemv(TRANS, &nx, &nx, &one_d, A+i*nx*nx, &nx, lambda+(i+1)*nx, &one_i, &one_d, rc+i*nz, &one_i);        
         daxpy(&nx,&minus_one_d,lambda+i*nx,&one_i,rc+i*nz,&one_i);
         
-        dgemv(TRANS, &nx, &nu, &one_d, S+i*nx*nu, &nx, w+i*nz, &one_i, &one_d, rc+i*nz+nx, &one_i);
-        dgemv(noTRANS, &nu, &nu, &one_d, R+i*nu*nu, &nu, w+i*nz+nx, &one_i, &one_d, rc+i*nz+nx, &one_i);
         dgemv(TRANS, &nx, &nu, &one_d, B+i*nx*nu, &nx, lambda+(i+1)*nx, &one_i, &one_d, rc+i*nz+nx, &one_i);
-        dgemv(TRANS, &nc, &nu, &one_d, Ci+nc*nx, &nc, mu+i*nc, &one_i, &one_d, rc+i*nz+nx, &one_i);
     }
         
-    Block_Access(ncN,nx,CN,C,N*nc,N*nz,N*nc+ncN);
-    dgemv(noTRANS, &nx, &nx, &one_d, Q+N*nx*nx, &nx, w+N*nz, &one_i, &one_d, rc+N*nz, &one_i);
-    dgemv(TRANS, &ncN, &nx, &one_d, CN, &ncN, mu+N*nc, &one_i, &one_d, rc+N*nz, &one_i);
-    daxpy(&nx,&minus_one_d,lambda+N*nx,&one_i,rc+N*nz,&one_i);
+    dgemv(noTRANS, &nx, &nx, &one_d, HN, &nx, w+N*nz, &one_i, &one_d, rc+N*nz, &one_i);
+    dgemv(TRANS, &row_CN, &nx, &one_d, CzN, &row_CN, mu+N*row_C, &one_i, &one_d, rc+N*nz, &one_i);
+    daxpy(&nx, &minus_one_d, lambda+N*nx, &one_i, rc+N*nz, &one_i);
     
 }
 
-void compute_rE(double *A, double *B, double *w, double *b, pdip_dims *dim, pdip_workspace *work)
+void compute_rE(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
-    size_t nc = dim->nc;
-    size_t ncN = dim->ncN;
     size_t N =dim->N;
     size_t nz = dim->nz;
     size_t neq = dim->neq;
     
+    double *b = work->b;
+    double *w = work->w;
     double *rE = work->rE;
     
     int i;    
@@ -319,7 +317,7 @@ void compute_rE(double *A, double *B, double *w, double *b, pdip_dims *dim, pdip
     mwSize one_i = 1;
     
     memcpy(rE, b, neq*sizeof(double));
-    for (i=1;i<nx;i++)
+    for (i=0;i<nx;i++)
         rE[i] += w[i]; 
  
     for (i=1;i<N+1;i++){
@@ -329,16 +327,26 @@ void compute_rE(double *A, double *B, double *w, double *b, pdip_dims *dim, pdip
     }
 }
 
-void compute_rI(double *C, double *c, double *w, double *mu, double *s, pdip_dims *dim, pdip_workspace *work)
+void compute_rI(pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
     size_t nc = dim->nc;
     size_t ncN = dim->ncN;
+    size_t nbu = dim->nbu;
     size_t N =dim->N;
     size_t nz = dim->nz;
     size_t nineq = dim->nineq;
     
+    size_t row_C = 2*(nbu+nc);
+    size_t row_CN = 2*ncN;
+    
+    double *w = work->w;
+    double *s = work->s;
+    double *mu = work->mu;
+    double *Cz = work->Cz;
+    double *CzN = work->CzN;
+    double *c = work->c;
     double *rI = work->rI;
     
     int i;
@@ -346,66 +354,75 @@ void compute_rI(double *C, double *c, double *w, double *mu, double *s, pdip_dim
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
-    
-    double *Ci = work->Ci;
-    double *CN = work->CN;
-    
+        
     memcpy(rI, c, nineq*sizeof(double));
-    daxpy(&nineq,&one_d,s,&one_i,rI,&one_i);
+    daxpy(&nineq, &one_d, s, &one_i, rI, &one_i);
  
     for (i=0;i<N;i++){
-        Block_Access(nc,nz,Ci,C,i*nc,i*nz,N*nc+ncN);
-        dgemv(noTRANS, &nc, &nz, &one_d, Ci, &nc, w+i*nz, &one_i, &one_d, rI+i*nc, &one_i);
+        dgemv(noTRANS, &row_C, &nz, &one_d, Cz+i*row_C*nz, &row_C, w+i*nz, &one_i, &one_d, rI+i*row_C, &one_i);
     }
-    Block_Access(ncN,nx,CN,C,N*nc,N*nz,N*nc+ncN);
-    dgemv(noTRANS, &ncN, &nx, &one_d, CN, &ncN, w+N*nz, &one_i, &one_d, rI+N*nc, &one_i);
+    dgemv(noTRANS, &row_CN, &nx, &one_d, CzN, &row_CN, w+N*nz, &one_i, &one_d, rI+N*row_C, &one_i);
   
 }
 
-void compute_rs(double *mu, double *s, pdip_dims *dim, pdip_workspace *work)
+void compute_rs(pdip_dims *dim, pdip_workspace *work)
 {
     size_t nc = dim->nc;
     size_t ncN = dim->ncN;
-    size_t N =dim->N;
+    size_t nbu = dim->nbu;
+    size_t N = dim->N;
+    
+    size_t row_C = 2*(nbu+nc);
+    size_t row_CN = 2*ncN;
     
     double sigma = work->sigma;
     double t = work->t;
     double *dmu = work->dmu;
     double *ds = work->ds;
     
+    double *s = work->s;
+    double *mu = work->mu;
     double *rs = work->rs;
     
     int i,j;
            
     for (i=0;i<N;i++){
-        for(j=0;j<nc;j++)
-            rs[i*nc+j] = s[i*nc+j]*mu[i*nc+j] - sigma*t + ds[i*nc+j]*dmu[i*nc+j];
+        for(j=0;j<row_C;j++)
+            rs[i*row_C+j] = s[i*row_C+j]*mu[i*row_C+j] - sigma*t + ds[i*row_C+j]*dmu[i*row_C+j];
     }
-    for(j=0;j<ncN;j++)
-        rs[N*nc+j] = s[N*nc+j]*mu[N*nc+j] - sigma*t + ds[N*nc+j]*dmu[N*nc+j];
+    for(j=0;j<row_CN;j++)
+        rs[N*row_C+j] = s[N*row_C+j]*mu[N*row_C+j] - sigma*t + ds[N*row_C+j]*dmu[N*row_C+j];
     
 }
 
-void compute_rd(double *C, double *c, double *mu, double *s, pdip_dims *dim, pdip_workspace *work)
+void compute_rd(pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
     size_t nc = dim->nc;
     size_t ncN = dim->ncN;
+    size_t nbu = dim->nbu;
     size_t N =dim->N;
     size_t nz = dim->nz;
+    size_t nw = dim->nw;
     size_t nineq = dim->nineq;
     
-    double *Ci = work->Ci;
+    size_t row_C = 2*(nbu+nc);
+    size_t row_CN = 2*ncN;
+    
+    double *s = work->s;
+    double *mu = work->mu;
+    
     double *hat_s_inv = work->hat_s_inv;
     double *hat_mu = work->hat_mu;
-    double *tmp = work->tmp1;   
-    double *CN = work->CN;
+    double *tmp = work->tmp1;
     double *hat_sN_inv = work->hat_sN_inv;
     double *hat_muN = work->hat_muN;
     double *tmpN = work->tmp1N;    
     double *e = work->e;
     
+    double *Cz = work->Cz;
+    double *CzN = work->CzN;
     double *rI = work->rI;
     double *rs = work->rs;
     double *rC = work->rC;
@@ -419,27 +436,25 @@ void compute_rd(double *C, double *c, double *mu, double *s, pdip_dims *dim, pdi
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
         
-    memcpy(rd, rC, (N*nz+nx)*sizeof(double));
+    memcpy(rd, rC, nw*sizeof(double));
     memcpy(e, rs, nineq*sizeof(double));
     
     for (i=0;i<N;i++){
-        Block_Access(nc,nz,Ci,C,i*nc,i*nz,N*nc+ncN); 
-        for(j=0;j<nc;j++){
-            hat_s_inv[j*nc+j]=1/s[i*nc+j];
-            hat_mu[j*nc+j]=mu[i*nc+j];
+        for(j=0;j<row_C;j++){
+            hat_s_inv[j*row_C+j]=1/s[i*row_C+j];
+            hat_mu[j*row_C+j]=mu[i*row_C+j];
         }
-        dgemm(TRANS, noTRANS, &nz, &nc, &nc, &minus_one_d, Ci, &nc, hat_s_inv, &nc, &zero_d, tmp, &nz);        
-        dgemv(noTRANS, &nc, &nc, &minus_one_d, hat_mu, &nc, rI+i*nc, &one_i, &one_d, e+i*nc, &one_i);       
-        dgemv(noTRANS, &nz, &nc, &one_d, tmp, &nz, e+i*nc, &one_i, &one_d, rd+i*nz, &one_i);        
+        dgemm(TRANS, noTRANS, &nz, &row_C, &row_C, &minus_one_d, Cz+i*row_C*nz, &row_C, hat_s_inv, &row_C, &zero_d, tmp, &nz);        
+        dgemv(noTRANS, &row_C, &row_C, &minus_one_d, hat_mu, &row_C, rI+i*row_C, &one_i, &one_d, e+i*row_C, &one_i);       
+        dgemv(noTRANS, &nz, &row_C, &one_d, tmp, &nz, e+i*row_C, &one_i, &one_d, rd+i*nz, &one_i);        
     }
-    Block_Access(ncN,nx,CN,C,N*nc,N*nz,N*nc+ncN);  
-    for(j=0;j<ncN;j++){
-        hat_sN_inv[j*ncN+j]=1/s[N*nc+j];
-        hat_muN[j*ncN+j]=mu[N*nc+j];
+    for(j=0;j<row_CN;j++){
+        hat_sN_inv[j*row_CN+j]=1/s[N*row_C+j];
+        hat_muN[j*row_CN+j]=mu[N*row_C+j];
     }
-    dgemm(TRANS, noTRANS, &nx, &ncN, &ncN, &minus_one_d, CN, &ncN, hat_sN_inv, &ncN, &zero_d, tmpN, &nx);        
-    dgemv(noTRANS, &ncN, &ncN, &minus_one_d, hat_muN, &ncN, rI+N*nc, &one_i, &one_d, e+N*nc, &one_i);       
-    dgemv(noTRANS, &nx, &ncN, &one_d, tmpN, &nx, e+N*nc, &one_i, &one_d, rd+N*nz, &one_i);        
+    dgemm(TRANS, noTRANS, &nx, &row_CN, &row_CN, &minus_one_d, CzN, &row_CN, hat_sN_inv, &row_CN, &zero_d, tmpN, &nx);        
+    dgemv(noTRANS, &row_CN, &row_CN, &minus_one_d, hat_muN, &row_CN, rI+N*row_C, &one_i, &one_d, e+N*row_C, &one_i);       
+    dgemv(noTRANS, &nx, &row_CN, &one_d, tmpN, &nx, e+N*row_C, &one_i, &one_d, rd+N*nz, &one_i);        
     
 }
 
@@ -447,8 +462,6 @@ void compute_beta(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
-    size_t nc = dim->nc;
-    size_t ncN = dim->ncN;
     size_t N =dim->N;
     size_t nz = dim->nz;
     size_t neq = dim->neq;
@@ -465,9 +478,7 @@ void compute_beta(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
     
-    double *Z = work->D;
-    for (i=0;i<nx;i++)
-        Z[i*nx+i] = 1.0;
+    double *D = work->D;
     
     /* solve for p */
     for (i=0;i<N;i++){
@@ -478,14 +489,14 @@ void compute_beta(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
     /* Compute beta */
     memcpy(beta, rE, neq*sizeof(double));
        
-    dgemv(noTRANS, &nx, &nz, &minus_one_d, Z, &nx, rd, &one_i, &one_d, beta, &one_i); 
+    dgemv(noTRANS, &nx, &nz, &one_d, D, &nx, rd, &one_i, &one_d, beta, &one_i); 
     
     for (i=1;i<N;i++){        
         
         dgemv(noTRANS, &nx, &nx, &minus_one_d, A+(i-1)*nx*nx, &nx, rd+(i-1)*nz, &one_i, &one_d, beta+i*nx, &one_i); 
         dgemv(noTRANS, &nx, &nu, &minus_one_d, B+(i-1)*nx*nu, &nx, rd+(i-1)*nz+nx, &one_i, &one_d, beta+i*nx, &one_i); 
         
-        dgemv(noTRANS, &nx, &nz, &one_d, Z, &nx, rd+i*nz, &one_i, &one_d, beta+i*nx, &one_i); 
+        dgemv(noTRANS, &nx, &nz, &minus_one_d, D, &nx, rd+i*nz, &one_i, &one_d, beta+i*nx, &one_i); 
     }     
     dgemv(noTRANS, &nx, &nx, &minus_one_d, A+(N-1)*nx*nx, &nx, rd+(N-1)*nz, &one_i, &one_d, beta+N*nx, &one_i); 
     dgemv(noTRANS, &nx, &nu, &minus_one_d, B+(N-1)*nx*nu, &nx, rd+(N-1)*nz+nx, &one_i, &one_d, beta+N*nx, &one_i); 
@@ -497,8 +508,6 @@ void recover_dw(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
-    size_t nc = dim->nc;
-    size_t ncN = dim->ncN;
     size_t N =dim->N;
     size_t nz = dim->nz;
     size_t nw = dim->nw;
@@ -533,16 +542,25 @@ void recover_dw(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
     daxpy(&nw, &minus_one_d, rd, &one_i, dw, &one_i);
 }
 
-void recover_dmu(double *C, double *mu, double *s, pdip_dims *dim, pdip_workspace *work)
+void recover_dmu(pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
     size_t nc = dim->nc;
     size_t ncN = dim->ncN;
+    size_t nbu = dim->nbu;
     size_t N =dim->N;
     size_t nz = dim->nz;
     size_t nineq = dim->nineq;
     
+    size_t row_C = 2*(nbu+nc);
+    size_t row_CN = 2*ncN;
+    
+    double *s = work->s;
+    double *mu = work->mu;
+    
+    double *Cz = work->Cz;
+    double *CzN = work->CzN;
     double *rI = work->rI;
     double *rs = work->rs;
     double *dw = work->dw;
@@ -553,39 +571,40 @@ void recover_dmu(double *C, double *mu, double *s, pdip_dims *dim, pdip_workspac
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
-    
-    double *Ci = work->Ci;
-    double *CN = work->CN;
-        
+   
     memcpy(dmu, rI, nineq*sizeof(double));
     
     for(i=0;i<N;i++){
-        Block_Access(nc,nz,Ci,C,i*nc,i*nz,N*nc+ncN);
-        dgemv(noTRANS, &nc, &nz, &one_d, Ci, &nc, dw+i*nz, &one_i, &one_d, dmu+i*nc, &one_i);              
-        for (j=0;j<nc;j++){
-            dmu[i*nc+j] *= 1/s[i*nc+j] * mu[i*nc+j] ;
-            dmu[i*nc+j] -= 1/s[i*nc+j] * rs[i*nc+j];
+        dgemv(noTRANS, &row_C, &nz, &one_d, Cz+i*row_C*nz, &row_C, dw+i*nz, &one_i, &one_d, dmu+i*row_C, &one_i);              
+        for (j=0;j<row_C;j++){
+            dmu[i*row_C+j] *= 1/s[i*row_C+j] * mu[i*row_C+j] ;
+            dmu[i*row_C+j] -= 1/s[i*row_C+j] * rs[i*row_C+j];
         }
     }
-    Block_Access(ncN,nx,CN,C,N*nc,N*nz,N*nc+ncN);
-    dgemv(noTRANS, &ncN, &nx, &one_d, CN, &ncN, dw+N*nz, &one_i, &one_d, dmu+N*nc, &one_i);
-    for (j=0;j<ncN;j++){
-        dmu[N*nc+j] *= 1/s[N*nc+j] * mu[N*nc+j] ;
-        dmu[N*nc+j] -= 1/s[N*nc+j] * rs[N*nc+j];
+    dgemv(noTRANS, &row_CN, &nx, &one_d, CzN, &row_CN, dw+N*nz, &one_i, &one_d, dmu+N*row_C, &one_i);
+    for (j=0;j<row_CN;j++){
+        dmu[N*row_C+j] *= 1/s[N*row_C+j] * mu[N*row_C+j] ;
+        dmu[N*row_C+j] -= 1/s[N*row_C+j] * rs[N*row_C+j];
     }
     
 }
 
-void recover_ds(double *C, pdip_dims *dim, pdip_workspace *work)
+void recover_ds(pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
     size_t nc = dim->nc;
     size_t ncN = dim->ncN;
+    size_t nbu = dim->nbu;
     size_t N =dim->N;
     size_t nz = dim->nz;
     size_t nineq = dim->nineq;
     
+    size_t row_C = 2*(nbu+nc);
+    size_t row_CN = 2*ncN;
+    
+    double *Cz = work->Cz;
+    double *CzN = work->CzN;
     double *rI = work->rI;
     double *dw = work->dw;
     double *ds = work->ds;
@@ -595,27 +614,27 @@ void recover_ds(double *C, pdip_dims *dim, pdip_workspace *work)
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
-    
-    double *Ci = work->Ci;
-    double *CN = work->CN;
-    
+       
     memcpy(ds, rI, nineq*sizeof(double));
     
     for(i=0;i<N;i++){
-        Block_Access(nc,nz,Ci,C,i*nc,i*nz,N*nc+ncN);
-        dgemv(noTRANS, &nc, &nz, &minus_one_d, Ci, &nc, dw+i*nz, &one_i, &minus_one_d, ds+i*nc, &one_i);
+        dgemv(noTRANS, &row_C, &nz, &minus_one_d, Cz+i*row_C*nz, &row_C, dw+i*nz, &one_i, &minus_one_d, ds+i*row_C, &one_i);
     }
-    Block_Access(ncN,nx,CN,C,N*nc,N*nz,N*nc+ncN);
-    dgemv(noTRANS, &ncN, &nx, &minus_one_d, CN, &ncN, dw+N*nz, &one_i, &minus_one_d, ds+N*nc, &one_i);
+    dgemv(noTRANS, &row_CN, &nx, &minus_one_d, CzN, &row_CN, dw+N*nz, &one_i, &minus_one_d, ds+N*row_C, &one_i);
     
 }
 
-void compute_fval(double *Q, double *S, double *R, double *g, double *w, pdip_dims *dim, pdip_workspace *work)
+void compute_fval(pdip_dims *dim, pdip_workspace *work)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
     size_t N =dim->N;
     size_t nz = dim->nz;
+    
+    double *H = work->H;
+    double *HN = work->HN;
+    double *g = work->g;
+    double *w = work->w;
     
     double *fval = work->fval;
     
@@ -627,14 +646,45 @@ void compute_fval(double *Q, double *S, double *R, double *g, double *w, pdip_di
        
     memcpy(fval,g,(N*nz+nx)*sizeof(double));
         
-    for (i=0;i<N;i++){
-        dgemv(noTRANS, &nx, &nx, &half, Q+i*nx*nx, &nx, w+i*nz, &one_i, &one_d, fval+i*nz, &one_i);
-        dgemv(noTRANS, &nx, &nu, &half, S+i*nx*nu, &nx, w+i*nz+nx, &one_i, &one_d, fval+i*nz, &one_i);
-        
-        dgemv(TRANS, &nx, &nu, &half, S+i*nx*nu, &nx, w+i*nz, &one_i, &one_d, fval+i*nz+nx, &one_i);
-        dgemv(noTRANS, &nu, &nu, &half, R+i*nu*nu, &nu, w+i*nz+nx, &one_i, &one_d, fval+i*nz+nx, &one_i);
+    for (i=0;i<N;i++){        
+        dgemv(noTRANS, &nz, &nz, &half, H+i*nz*nz, &nz, w+i*nz, &one_i, &one_d, fval+i*nz, &one_i);
     }
             
-    dgemv(noTRANS, &nx, &nx, &half, Q+N*nx*nx, &nx, w+N*nz, &one_i, &one_d, fval+N*nz, &one_i);   
+    dgemv(noTRANS, &nx, &nx, &half, HN, &nx, w+N*nz, &one_i, &one_d, fval+N*nz, &one_i);   
+    
+}
+
+void recover_sol(pdip_dims *dim, pdip_workspace *work, 
+        double *dz, double *dxN, double *lambda, double *mu, double *muN, double *mu_u)
+{
+    size_t nx = dim->nx;
+    size_t nu = dim->nu;
+    size_t nz = dim->nz;
+    size_t N =dim->N;
+    size_t nc = dim->nc;
+    size_t ncN = dim->ncN;
+    size_t nbu = dim->nbu;
+    size_t neq = dim->neq;
+    
+    size_t row_C = 2*(nbu+nc);
+    size_t row_CN = 2*ncN;
+    
+    int *nbu_idx = dim->nbu_idx;
+    
+    int i,j;
+    
+    memcpy(dz, work->w, N*nz*sizeof(double));
+    memcpy(dxN, work->w+N*nz, nx*sizeof(double));
+    memcpy(lambda, work->lambda, neq*sizeof(double));
+    
+    for (i=0;i<N;i++){
+        for(j=0;j<nc;j++)
+            mu[i*nc+j] = work->mu[i*row_C+j] - work->mu[i*row_C+nc+nbu+j];
+        for(j=0;j<nbu;j++)
+            mu_u[i*nu+nbu_idx[j]] = work->mu[i*row_C+nc+j] - work->mu[i*row_C+nc+nbu+nc+j];
+    }
+    
+    for(j=0;j<ncN;j++)
+        mu[N*nc+j] = work->mu[N*row_C+j] - work->mu[N*row_C+ncN+j];
     
 }
