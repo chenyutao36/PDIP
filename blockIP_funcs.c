@@ -518,15 +518,16 @@ void recover_dw(double *A, double *B, pdip_dims *dim, pdip_workspace *work)
     double *dlambda = work->dlambda;
     double *dw = work->dw;
     
-    int i;  
+    int i,j;  
     mwSize INFO;
     char *UPLO="L", *TRANS="T", *noTRANS="N", *DIAG="N", *SIDE="R";
     double one_d = 1.0, zero_d=0.0, minus_one_d = -1.0;
     mwSize one_i = 1;
     
-    memcpy(dw, dlambda, nx*sizeof(double));
+    for(j=0;j<nx;j++)
+        dw[j] = -1.0*dlambda[j];
     
-    dgemv(TRANS, &nx, &nx, &minus_one_d, A, &nx, dlambda+nx, &one_i, &minus_one_d, dw, &one_i); 
+    dgemv(TRANS, &nx, &nx, &minus_one_d, A, &nx, dlambda+nx, &one_i, &one_d, dw, &one_i); 
     dgemv(TRANS, &nx, &nu, &minus_one_d, B, &nx, dlambda+nx, &one_i, &zero_d, dw+nx, &one_i);
     dpotrs(UPLO, &nz, &one_i, phi, &nz, dw, &nz, &INFO);
     
@@ -655,12 +656,12 @@ void compute_fval(pdip_dims *dim, pdip_workspace *work)
 }
 
 void recover_sol(pdip_dims *dim, pdip_workspace *work, 
-        double *dz, double *dxN, double *lambda, double *mu, double *muN, double *mu_u)
+        double *dx, double *du, double *lambda, double *mu, double *muN, double *mu_u)
 {
     size_t nx = dim->nx;
     size_t nu = dim->nu;
     size_t nz = dim->nz;
-    size_t N =dim->N;
+    size_t N = dim->N;
     size_t nc = dim->nc;
     size_t ncN = dim->ncN;
     size_t nbu = dim->nbu;
@@ -673,18 +674,22 @@ void recover_sol(pdip_dims *dim, pdip_workspace *work,
     
     int i,j;
     
-    memcpy(dz, work->w, N*nz*sizeof(double));
-    memcpy(dxN, work->w+N*nz, nx*sizeof(double));
     memcpy(lambda, work->lambda, neq*sizeof(double));
     
+    set_zeros(N*nu, mu_u);
+    
     for (i=0;i<N;i++){
+        memcpy(dx+i*nx, work->w+i*nz, nx*sizeof(double));
+        memcpy(du+i*nu, work->w+i*nz+nx, nu*sizeof(double));
+        
         for(j=0;j<nc;j++)
             mu[i*nc+j] = work->mu[i*row_C+j] - work->mu[i*row_C+nc+nbu+j];
         for(j=0;j<nbu;j++)
             mu_u[i*nu+nbu_idx[j]] = work->mu[i*row_C+nc+j] - work->mu[i*row_C+nc+nbu+nc+j];
     }
     
+    memcpy(dx+N*nx, work->w+N*nz, nx*sizeof(double));
     for(j=0;j<ncN;j++)
-        mu[N*nc+j] = work->mu[N*row_C+j] - work->mu[N*row_C+ncN+j];
+        muN[j] = work->mu[N*row_C+j] - work->mu[N*row_C+ncN+j];
     
 }

@@ -46,7 +46,6 @@ void pdip_init_dim(pdip_dims *dim, size_t nx, size_t nu, size_t nc, size_t ncN, 
     for (i=0;i<nbu;i++)
         dim->nbu_idx[i] = (int) nbu_idx[i]-1;
     
-//     print_vector_int(nbu, dim->nbu_idx);
 }
 
 
@@ -255,15 +254,15 @@ void *pdip_cast_workspace(pdip_dims *dim, void *raw_memory)
     workspace->s = (double *)c_ptr;
     c_ptr += nineq*sizeof(double);
            
-//     mexPrintf("size calculated: %d\n", pdip_calculate_workspace_size(dim));
-//     mexPrintf("pointer moved: %d\n", c_ptr - (char*)raw_memory);
+    mexPrintf("size calculated: %d\n", pdip_calculate_workspace_size(dim));
+    mexPrintf("pointer moved: %d\n", c_ptr - (char*)raw_memory);
 
     return (void *)workspace;
 
 }
 
 void pdip_init_workspace(pdip_dims *dim, pdip_workspace *work, 
-        double *Cx, double *Cu, double *CxN, double *uc, double *lc, double *ub_du, double *lb_du,
+        double *Cx, double *Cu, double *CN, double *uc, double *lc, double *ub_du, double *lb_du,
         double *Q, double *S, double *R, double *A, double *B, double *gx, double *gu, double *ds0, double *a, double reg)
 {
     size_t nx = dim->nx;
@@ -286,8 +285,8 @@ void pdip_init_workspace(pdip_dims *dim, pdip_workspace *work,
     
     int i,j;
     for (i=0;i<nineq;i++){
-        work->s[i] = 10;
-        work->mu[i] = 10;
+        work->s[i] = 1E+3;
+        work->mu[i] = 1E+3;
     }
     
     set_zeros(row_C*row_C, work->hat_s_inv);
@@ -302,7 +301,7 @@ void pdip_init_workspace(pdip_dims *dim, pdip_workspace *work,
     set_zeros(nbu*nu, work->Cu);
     set_zeros(nbu*nx, work->Cx);
     
-    work->tau = 0.9;
+    work->tau = 0.7;
     
     double *Cz = work->Cz;
     double *CzN = work->CzN;
@@ -364,8 +363,8 @@ void pdip_init_workspace(pdip_dims *dim, pdip_workspace *work,
                         
     }
         
-    Block_Fill(ncN,nx,CxN,CzN,0,0,row_CN, 1.0);
-    Block_Fill(ncN,nx,CxN,CzN,ncN,0,row_CN, -1.0);
+    Block_Fill(ncN,nx,CN,CzN,0,0,row_CN, 1.0);
+    Block_Fill(ncN,nx,CN,CzN,ncN,0,row_CN, -1.0);
     
     for (j=0;j<ncN;j++){
         c[N*row_C+j] = -uc[N*nc+j];

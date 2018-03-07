@@ -63,7 +63,8 @@ void set_zeros(size_t n, double *a){
 void regularization(size_t n, double *A, double reg){
     int i;
     for (i=0;i<n;i++)
-        A[i*n+i] += reg;
+        if (A[i*n+i]<reg)
+            A[i*n+i] = reg;
 }
 
 void print_matrix(size_t m, size_t n, double *A, size_t ldA)

@@ -12,13 +12,13 @@ void
 mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
 {    
     
-    double *Q = mxGetPr( mxGetField(prhs[0], 0, "Q_h") );
+    double *Q = mxGetPr( mxGetField(prhs[0], 0, "Q") );
     double *S = mxGetPr( mxGetField(prhs[0], 0, "S") );
     double *R = mxGetPr( mxGetField(prhs[0], 0, "R") );
-    double *A = mxGetPr( mxGetField(prhs[0], 0, "A_sens") );
-    double *B = mxGetPr( mxGetField(prhs[0], 0, "B_sens") );
+    double *A = mxGetPr( mxGetField(prhs[0], 0, "A") );
+    double *B = mxGetPr( mxGetField(prhs[0], 0, "B") );
     double *Cx = mxGetPr( mxGetField(prhs[0], 0, "Cx") );
-    double *CxN = mxGetPr( mxGetField(prhs[0], 0, "CxN") );
+    double *CN = mxGetPr( mxGetField(prhs[0], 0, "CN") );
     double *Cu = mxGetPr( mxGetField(prhs[0], 0, "Cu") );
     double *gx = mxGetPr( mxGetField(prhs[0], 0, "gx") );
     double *gu = mxGetPr( mxGetField(prhs[0], 0, "gu") );
@@ -37,7 +37,7 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
     double *nbu_idx = mxGetPr( mxGetField(prhs[1], 0, "nbu_idx") );
     size_t N = mxGetScalar( mxGetField(prhs[1], 0, "N") );
     
-    size_t it_max = mxGetScalar( mxGetField(prhs[2], 0, "it_max") );
+    int it_max = mxGetScalar( mxGetField(prhs[2], 0, "it_max") );
     double tol = mxGetScalar( mxGetField(prhs[2], 0, "tol") );
     int prt = mxGetScalar( mxGetField(prhs[2], 0, "print_level") );
     double reg = mxGetScalar( mxGetField(prhs[2], 0, "reg") );
@@ -49,16 +49,13 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
     
     int i;
     
-//     double *dz = mxGetPr( mxGetField(prhs[0], 0, "dz") );
-//     double *dxN = mxGetPr( mxGetField(prhs[0], 0, "dxN") );
-//     double *lambda = mxGetPr( mxGetField(prhs[0], 0, "lambda_new") );
-//     double *mu = mxGetPr( mxGetField(prhs[0], 0, "mu_new") );
-//     double *muN = mxGetPr( mxGetField(prhs[0], 0, "muN_new") );
-//     double *mu_u = mxGetPr( mxGetField(prhs[0], 0, "mu_u_new") );
-    plhs[0] = mxCreateDoubleMatrix(nw, 1, mxREAL);
-    plhs[1] = mxCreateDoubleMatrix(neq, 1, mxREAL);
-    plhs[2] = mxCreateDoubleMatrix(nineq, 1, mxREAL);
-        
+    double *dx = mxGetPr( mxGetField(prhs[0], 0, "dx") );
+    double *du = mxGetPr( mxGetField(prhs[0], 0, "du") );
+    double *lambda = mxGetPr( mxGetField(prhs[0], 0, "lambda_new") );
+    double *mu = mxGetPr( mxGetField(prhs[0], 0, "mu_new") );
+    double *muN = mxGetPr( mxGetField(prhs[0], 0, "muN_new") );
+    double *mu_u = mxGetPr( mxGetField(prhs[0], 0, "mu_u_new") );
+         
     /* Allocate Memory */ 
     int size_dim = pdip_calculate_dim_size(nbu);
     void *dim_mem = mxMalloc(size_dim);
@@ -68,7 +65,7 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
     int size = pdip_calculate_workspace_size(dim);
     void *work = mxMalloc(size);
     pdip_workspace *workspace = (pdip_workspace *) pdip_cast_workspace(dim, work);
-    pdip_init_workspace(dim, workspace, Cx, Cu, CxN, uc, lc, ub_du, lb_du,
+    pdip_init_workspace(dim, workspace, Cx, Cu, CN, uc, lc, ub_du, lb_du,
         Q, S, R, A, B, gx, gu, ds0, a, reg);
             
     /* Define constants*/    
@@ -80,7 +77,7 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
     double measure = fabs(tol)*2;
     int it=0;
     
-    if (prt>0){
+    if (prt==2){
         mexPrintf("%-10s","It:");
         mexPrintf("%-20s","Dual Res");
         mexPrintf("%-20s","Eq Res");
@@ -95,9 +92,7 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
         workspace->t=0;      
         set_zeros(nineq, workspace->dmu);
         set_zeros(nineq, workspace->ds);
-        
-//         print_vector(nineq, workspace->s);
-               
+                      
         /* Predictor */
 
         /* Compute residuals */
@@ -126,17 +121,16 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
         recover_ds(dim, workspace);
 
         /* Compute centering parameter sigma*/
-        
-        
+               
         workspace->t = ddot(&nineq, workspace->s, &one_i, workspace->mu, &one_i)/nineq;
-        alpha_aff = 1;
+        alpha_aff = 0.995;
         memcpy(workspace->s_new, workspace->s, nineq*sizeof(double));
         memcpy(workspace->mu_new, workspace->mu, nineq*sizeof(double));
         daxpy(&nineq, &alpha_aff, workspace->ds, &one_i, workspace->s_new, &one_i);
         daxpy(&nineq, &alpha_aff, workspace->dmu, &one_i, workspace->mu_new, &one_i);
         t_aff = ddot(&nineq, workspace->s_new, &one_i, workspace->mu_new, &one_i);
-        while (t_aff<=0 && alpha_aff>1E-12){
-            alpha_aff *= 0.95;
+        while (t_aff<=0 && alpha_aff>1E-8){
+            alpha_aff *= 0.9;
             memcpy(workspace->s_new, workspace->s, nineq*sizeof(double));
             memcpy(workspace->mu_new, workspace->mu, nineq*sizeof(double));
             daxpy(&nineq, &alpha_aff, workspace->ds, &one_i, workspace->s_new, &one_i);
@@ -158,12 +152,12 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
         /* Step length selection*/
         sca = 1-workspace->tau;
         
-        alpha_pri_tau=1;
+        alpha_pri_tau=0.995;
         memcpy(workspace->s_new, workspace->s, nineq*sizeof(double));
         memcpy(workspace->mu_new, workspace->s, nineq*sizeof(double));
         daxpy(&nineq, &alpha_pri_tau, workspace->ds, &one_i, workspace->s_new, &one_i);
         dscal(&nineq, &sca, workspace->mu_new, &one_i);
-        while (!vec_bigger(nineq, workspace->s_new, workspace->mu_new) && alpha_pri_tau>1E-12){
+        while (!vec_bigger(nineq, workspace->s_new, workspace->mu_new) && alpha_pri_tau>1E-8){
             alpha_pri_tau *= 0.95;
             memcpy(workspace->s_new, workspace->s, nineq*sizeof(double));
             memcpy(workspace->mu_new, workspace->s, nineq*sizeof(double));
@@ -171,12 +165,12 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
             dscal(&nineq, &sca, workspace->mu_new, &one_i);
         }
 
-        alpha_dual_tau=1;
+        alpha_dual_tau=0.995;
         memcpy(workspace->s_new, workspace->mu, nineq*sizeof(double));
         memcpy(workspace->mu_new, workspace->mu, nineq*sizeof(double));
         daxpy(&nineq, &alpha_dual_tau, workspace->dmu, &one_i, workspace->s_new, &one_i);
         dscal(&nineq, &sca, workspace->mu_new, &one_i);
-        while (!vec_bigger(nineq, workspace->s_new, workspace->mu_new) && alpha_dual_tau>1E-12){
+        while (!vec_bigger(nineq, workspace->s_new, workspace->mu_new) && alpha_dual_tau>1E-8){
             alpha_dual_tau *= 0.95;
             memcpy(workspace->s_new, workspace->mu, nineq*sizeof(double));
             memcpy(workspace->mu_new, workspace->mu, nineq*sizeof(double));
@@ -187,10 +181,6 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
         alpha = MIN(alpha_pri_tau, alpha_dual_tau);
         
         /* Update solution */
-//         if (it==0){
-//             mexPrintf("%f\n",alpha);
-//             print_vector(neq, workspace->lambda);
-//         }
         
         daxpy(&nw, &alpha, workspace->dw, &one_i, workspace->w, &one_i);
         daxpy(&neq, &alpha, workspace->dlambda, &one_i, workspace->lambda, &one_i);
@@ -215,7 +205,7 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
                      
         it++;
         
-        if (prt>0){
+        if (prt==2){
             mexPrintf("%-10d",it);
             mexPrintf("%-20.3e",dual_res);
             mexPrintf("%-20.3e",eq_res);
@@ -224,17 +214,19 @@ mexFunction(int nlhs,mxArray *plhs[],int nrhs,const mxArray *prhs[])
             mexPrintf("%-20.3e\n",fval);
         }
         
-        workspace->tau = exp(-0.1/it);
+        workspace->tau = exp(-0.3/it);
         
     }
-    
-//     recover_sol(dim, workspace, dz, dxN, lambda, mu, muN, mu_u);
-    
-    memcpy(mxGetPr(plhs[0]), workspace->w, nw*sizeof(double));
-    memcpy(mxGetPr(plhs[1]), workspace->lambda, neq*sizeof(double));
-    memcpy(mxGetPr(plhs[2]), workspace->mu, nineq*sizeof(double));
-    
+    if (prt==1){
+        mexPrintf("No. of It: %d,   KKT: %6.3e\n", it, measure);
+    }
+        
+    recover_sol(dim, workspace, dx, du, lambda, mu, muN, mu_u);
+        
     /* Free memory */
-    mxFree(work); 
+    dim = NULL;
+    workspace = NULL;
     mxFree(dim_mem);    
+    mxFree(work); 
+    
 }
